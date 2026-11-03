@@ -207,12 +207,16 @@ details.banner p { margin: 8px 0 2px; }
 
 .exercise { padding: 10px 0 4px; border-top: 1px solid var(--line); }
 .exercise:first-of-type { border-top: 0; }
-.ex-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; }
+.ex-head { display: block; line-height: 1.35; }           /* inline flow: "▶ how to" follows the last word of the name */
 .ex-name { font-weight: 600; }
 .ex-target { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .ex-history, .ex-video { font-size: 13px; margin-left: 6px; padding: 14px 6px; white-space: nowrap; }   /* padding = a 44px tall tap target without changing the line */
 .ex-video { font-weight: 600; }
-.check-text .ex-video { display: inline-block; margin-left: 2px; }
+.ex-sub { padding-left: 8px; font-size: 13px; line-height: 1.2; }  /* "history" under the name, indented */
+.ex-sub .ex-history { margin-left: 0; }
+.set-row.set-head { min-height: 0; padding: 2px 0 0; }   /* the rep target over the reps column */
+.set-head .ex-target { justify-self: center; font-size: 13px; }   /* centred on the reps column even when wider than it */
+.head-unit { visibility: hidden; }                        /* keeps the header's columns the same width as the set rows */
 .ex-last { font-size: 13px; color: var(--muted); }
 .ex-note { font-size: 13px; color: var(--muted); font-style: italic; }
 .ex-nudge {

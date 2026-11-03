@@ -14,7 +14,7 @@ import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '3';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '4';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -727,13 +727,20 @@ function exerciseSets(row, n, draft) {
   const unit = unitLabel(row.unit);
   const last = lastTimeText(row);
   const nudge = nudgeFor(row);
+  // Name with "▶ how to" right after it; "history" on its own line under the name; the rep target
+  // sits over the reps column in a header row that uses the same grid as the set rows.
   let html = '<div class="exercise">' +
-    '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' +
-    '<span class="ex-target">' + esc(targetText(row)) + videoLink(row.exercise) +
-    '<a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a></span></div>';
+    '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</div>' +
+    '<div class="ex-sub"><a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a></div>';
   if (last) html += '<div class="ex-last">last time: ' + esc(last) + '</div>';
   if (nudge) html += '<div class="ex-nudge">' + esc(nudge) + '</div>';
   if (row.note) html += '<div class="ex-note">' + esc(row.note) + '</div>';
+  // Each set row is its own grid, so the header repeats the unit labels (invisibly) to get the
+  // same column widths and land the target exactly over the reps field.
+  html += '<div class="set-row set-head"><span></span><span></span>' +
+    '<span class="unit head-unit">' + (row.log_weight ? 'lb' : '') + '</span>' +
+    '<span class="ex-target">' + esc(targetText(row)) + '</span>' +
+    '<span class="unit head-unit">' + esc(unit) + '</span><span></span></div>';
   for (let i = 1; i <= n; i++) {
     const s = getSetEntry(draft, row, i);
     const key = setKey(row.exercise, i);
@@ -760,8 +767,8 @@ function checkLine(row, draft) {
   const on = !!draft.checks[row.exercise];
   return '<div class="exercise check-line' + (on ? ' is-done' : '') + '">' +
     '<button type="button" class="done" data-check="' + esc(row.exercise) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(row.exercise) + ' done">✓</button>' +
-    '<span class="check-text"><span class="ex-name">' + esc(row.exercise) + '</span>' +
-    '<span class="ex-target">' + esc(row.target) + videoLink(row.exercise) + '</span>' +
+    '<span class="check-text"><span class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</span>' +
+    '<span class="ex-target">' + esc(row.target) + '</span>' +
     (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') + '</span></div>';
 }
 

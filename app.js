@@ -14,7 +14,7 @@ import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '6';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '7';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -492,16 +492,27 @@ function lastCompletedSession() {
   return state.sessions.find(s => isTrue(s.completed)) || null;
 }
 
+// The day after the last completed session in the cycle 1 → 2 → 3 → 4 → 1. Days already done this
+// week (out of order) are skipped over, so next-up is always one still to do; once all four are
+// done it is the cycle's next day, i.e. where next week starts.
 function nextUpDayId() {
   const s = lastCompletedSession();
-  if (!s) return 'day1';
-  const i = DAY_ORDER.indexOf(s.day_id);
-  return i < 0 ? 'day1' : DAY_ORDER[(i + 1) % DAY_ORDER.length];
+  let next = 'day1';
+  if (s) {
+    const i = DAY_ORDER.indexOf(s.day_id);
+    next = i < 0 ? 'day1' : DAY_ORDER[(i + 1) % DAY_ORDER.length];
+  }
+  const start = DAY_ORDER.indexOf(next);
+  for (let k = 0; k < DAY_ORDER.length; k++) {
+    const d = DAY_ORDER[(start + k) % DAY_ORDER.length];
+    if (!doneThisWeek(d)) return d;
+  }
+  return next;
 }
 
+// The completed session for that day in the current week, or null.
 function doneThisWeek(dayId) {
-  const s = state.sessions.find(x => x.day_id === dayId && Number(x.week) === state.week && isTrue(x.completed));
-  return s ? s.date : null;
+  return state.sessions.find(x => x.day_id === dayId && Number(x.week) === state.week && isTrue(x.completed)) || null;
 }
 
 function initWeek() {
@@ -709,20 +720,23 @@ function homeView() {
   const rest = (pj.rest_days || ['Wednesday', 'Sunday']).join(' and ');
   const restNote = (pj.rest_day_note || 'Rest day — walk Blu.').replace(/^Rest day\s*[—-]\s*/i, '');
 
+  const doneIds = DAY_ORDER.filter(d => doneThisWeek(d));
+  const todoIds = DAY_ORDER.filter(d => d !== next && !doneThisWeek(d));
+  const allDone = doneIds.length === DAY_ORDER.length;
+
   const dayButton = (dayId, big) => {
     const m = dayMeta(dayId);
-    const done = doneThisWeek(dayId);
     const optional = dayId === 'day4' ? '<span class="tag">optional in a busy week</span>' : '';
     if (big) {
       return '<a class="next-up" href="#workout/' + dayId + '">' +
-        '<span class="eyebrow">Next up</span>' +
+        '<span class="eyebrow">' + (allDone ? 'Next week starts with' : 'Next up') + '</span>' +
         '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
         '<span class="meta">~' + esc(m.minutes || '?') + ' min · ' + esc(m.weekday) + '</span>' + optional +
         '</a>';
     }
     return '<a class="day-btn" href="#workout/' + dayId + '">' +
       '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + optional + '</span>' +
-      '<span class="day-meta">' + (done ? '✓ ' + esc(fmtDate(done)) : '~' + esc(m.minutes || '?') + ' min') + '</span>' +
+      '<span class="day-meta">~' + esc(m.minutes || '?') + ' min</span>' +
       '</a>';
   };
 
@@ -734,9 +748,14 @@ function homeView() {
   if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
   if (sug) html += suggestBanner(sug);
   html += dayButton(next, true);
-  html += '<p class="muted small" style="margin:14px 0 4px">Or pick another day — slide, don\'t skip:</p>';
-  DAY_ORDER.filter(d => d !== next).forEach(d => { html += dayButton(d, false); });
+  if (todoIds.length) {
+    html += '<p class="muted small" style="margin:14px 0 4px">Or pick another day — slide, don\'t skip:</p>';
+    todoIds.forEach(d => { html += dayButton(d, false); });
+  } else if (allDone) {
+    html += '<p class="muted small" style="margin:14px 0 4px">All four days are done — rest up and start the next week when you\'re ready.</p>';
+  }
   html += '<p class="rest-note">' + esc(rest) + ': rest — ' + esc(restNote) + '</p>';
+  if (doneIds.length) html += doneSection(doneIds);
 
   if (!apiConfigured()) {
     html += '<p class="sync-line warn">Not connected to the sheet yet — saves stay on this phone.</p>';
@@ -746,6 +765,29 @@ function homeView() {
   } else if (state.programSource === 'fallback') {
     html += '<p class="sync-line">Couldn\'t reach the sheet — showing the built-in program.</p>';
   }
+  return html + '</section>';
+}
+
+// The bottom of Home: this week's completed days, checked off in green, with a line that scales
+// with the count ("three days is a win" is the program's own rule).
+function doneSection(dayIds) {
+  const n = dayIds.length;
+  const cheer = n >= 4 ? 'All four. A full week — nice work!'
+    : n === 3 ? 'Three done — that\'s a win.'
+    : n === 2 ? 'Two done — a good week already.'
+    : 'One down — showing up is the hard part.';
+  let html = '<section class="done-week" aria-label="Done this week">' +
+    '<div class="done-head"><h3>Done this week</h3><span class="done-count">' + n + ' of ' + DAY_ORDER.length + '</span></div>' +
+    '<p class="done-cheer">' + esc(cheer) + '</p>';
+  dayIds.forEach(d => {
+    const s = doneThisWeek(d);
+    const m = dayMeta(d);
+    const meta = [fmtDateLong(s.date), s.duration_min ? esc(s.duration_min) + ' min' : ''].filter(Boolean).join(' · ');
+    html += '<a class="day-btn day-done" href="#workout/' + d + '">' +
+      '<span class="done-badge" aria-hidden="true">✓</span>' +
+      '<span class="done-text"><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) +
+      '<br><span class="done-meta">' + esc(meta) + '</span></span></a>';
+  });
   return html + '</section>';
 }
 

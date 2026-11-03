@@ -13,7 +13,7 @@
 import { API_URL, TOKEN } from './config.js';
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '1';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '2';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -306,6 +306,12 @@ function enqueue(item) {
   q.push({ id: uuid(), createdAt: new Date().toISOString(), ...item });
   writeQueue(q);
 }
+// A session row supersedes any copy of itself still waiting in the queue (same client_id).
+function enqueueSession(session) {
+  const q = readQueue().filter(i => !(i.action === 'session' && i.session.client_id === session.client_id));
+  q.push({ id: uuid(), createdAt: new Date().toISOString(), action: 'session', session });
+  writeQueue(q);
+}
 function queuedItems(action) { return readQueue().filter(i => i.action === action); }
 function queuedSessionIds() { return new Set(queuedItems('session').map(i => i.session.client_id)); }
 function queuedSetRows(match) {
@@ -330,12 +336,10 @@ function applySetsToLast(sets) {
 
 function replayQueueIntoState() {
   queuedItems('logSets').forEach(i => applySetsToLast(i.sets || []));
-  const ids = new Set(state.sessions.map(s => s.client_id));
-  queuedItems('session').forEach(i => {
-    if (!ids.has(i.session.client_id)) {
-      state.sessions.unshift({ ...i.session, timestamp: i.createdAt });
-      ids.add(i.session.client_id);
-    }
+  queuedItems('session').forEach(i => {                      // a queued copy is newer than the server's
+    const rec = { ...i.session, timestamp: i.createdAt };
+    const idx = state.sessions.findIndex(s => s.client_id === i.session.client_id);
+    if (idx >= 0) state.sessions[idx] = rec; else state.sessions.unshift(rec);
   });
 }
 
@@ -438,8 +442,11 @@ function loadDraft(dayId, phase) {
     sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig }
     checks: {},                               // warmup / finisher lines → true when ticked
     checksSent: {},
+    note: '',                                 // the Notes box at the bottom of the page
+    completed: false,                         // true once Save & finish has been tapped
+    durationMin: null,                        // minutes from the first tap to Save & finish
     sessionClientId: uuid(),
-    sessionSent: false,
+    sentSessionSig: null,                     // "completed|note" as last queued; a change re-sends the row
   };
 }
 function saveDraft(d) { lsSet(draftKey(d.dayId), d); }
@@ -495,24 +502,34 @@ function durationMinutes(draft) {
   return mins >= 5 && mins <= 180 ? mins : null;
 }
 
-// Queue the rows (and the session when finishing), update "last time" on this phone right away.
+// Queue the set rows and the session row, and update "last time" on this phone right away.
+// The session row (completed flag, note, duration) goes out whenever it changed. The script updates
+// the existing row for the same client_id, so a note added after finishing still lands.
 function saveWorkout(draft, workout, finish) {
   const sets = collectSetsToSend(draft, workout);
   if (sets.length) {
     enqueue({ action: 'logSets', sets });
     applySetsToLast(sets);
   }
+  if (finish && !draft.completed) {
+    draft.completed = true;
+    draft.durationMin = durationMinutes(draft);
+    lsRemove(LS.dismissedSuggest);
+  }
+  const note = String(draft.note || '').trim();
+  const hasActivity = sets.length > 0 || note !== '' || draft.completed ||
+    Object.values(draft.sets).some(s => s.sentSig) || Object.keys(draft.checksSent || {}).length > 0;
+  const sessionSig = (draft.completed ? 1 : 0) + '|' + note;
   let sessionQueued = false;
-  if (finish && !draft.sessionSent) {
+  if (hasActivity && sessionSig !== (draft.sentSessionSig || null)) {
     const session = {
       client_id: draft.sessionClientId, date: draft.date, week: state.week, phase: draft.phase,
-      day_id: draft.dayId, completed: true, duration_min: durationMinutes(draft), note: '',
+      day_id: draft.dayId, completed: !!draft.completed, duration_min: draft.durationMin || null, note,
     };
-    enqueue({ action: 'session', session });
-    draft.sessionSent = true;
+    enqueueSession(session);
+    draft.sentSessionSig = sessionSig;
     state.sessions = [{ ...session, timestamp: new Date().toISOString() }]
       .concat(state.sessions.filter(s => s.client_id !== session.client_id));
-    lsRemove(LS.dismissedSuggest);
     sessionQueued = true;
   }
   draft.week = state.week;
@@ -649,6 +666,9 @@ function workoutView(dayId) {
   }
   workout.blocks.forEach(b => { html += blockCard(b, draft); });
   if (workout.cooldown) html += '<p class="cooldown">' + esc(workout.cooldown) + '</p>';
+  html += '<section class="card notes-card"><h3>Notes</h3>' +
+    '<textarea id="day-note" class="notes" rows="3" placeholder="How did it go? Anything to remember next time?"' +
+    ' aria-label="Notes for this workout">' + esc(draft.note || '') + '</textarea></section>';
   html += '</section>' +
     '<div class="savebar"><div class="savebar-inner">' +
     '<div id="save-status" class="save-status">' + esc(initialSaveStatus(draft)) + '</div>' +
@@ -733,9 +753,13 @@ function historyView() {
     const m = dayMeta(s.day_id);
     const status = isTrue(s.completed) ? 'Completed' : 'Not finished';
     const local = pending.has(s.client_id) ? ' · not synced yet' : '';
+    const noteText = String(s.note || '').trim();
+    const noteLine = noteText
+      ? '<br><span class="small note-preview">' + esc(noteText.length > 90 ? noteText.slice(0, 90) + '…' : noteText) + '</span>'
+      : '';
     return '<a class="row" href="#session/' + encodeURIComponent(s.client_id) + '">' +
       '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + '<br>' +
-      '<span class="muted small">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' + status + local + '</span></span>' +
+      '<span class="muted small">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' + status + local + '</span>' + noteLine + '</span>' +
       '<span class="chev">›</span></a>';
   }).join('');
   return '<section class="list">' + items + '</section>';
@@ -751,6 +775,7 @@ function sessionView(id) {
     '<p class="day-sub">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' +
     (isTrue(s.completed) ? 'Completed' : 'Not finished') +
     (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + '</p>' +
+    (String(s.note || '').trim() ? '<p class="session-note">' + esc(String(s.note).trim()) + '</p>' : '') +
     '<div id="session-sets"><p class="muted">Loading sets…</p></div></section>';
 }
 
@@ -1003,7 +1028,10 @@ async function onSave(finish) {
     flushQueue().then(rerenderIfPassive);
     return;
   }
-  if (!result.setsQueued) { setSaveStatus(state.queueCount ? initialSaveStatus(draft) : 'Nothing new to save'); return; }
+  if (!result.setsQueued && !result.sessionQueued) {
+    setSaveStatus(state.queueCount ? initialSaveStatus(draft) : 'Nothing new to save');
+    return;
+  }
   setSaveStatus('Saving…');
   await flushQueue();
   if (!current || current.draft !== draft) return;         // moved to another view meanwhile
@@ -1048,7 +1076,14 @@ function bindViewEvents() {
 
   view.addEventListener('input', e => {
     const el = e.target;
-    if (!(el instanceof HTMLInputElement) || !el.dataset.key || !current) return;
+    if (!current) return;
+    if (el instanceof HTMLTextAreaElement && el.id === 'day-note') {   // the Notes box
+      current.draft.note = el.value;
+      markStarted(current.draft);
+      scheduleDraftSave();
+      return;
+    }
+    if (!(el instanceof HTMLInputElement) || !el.dataset.key) return;
     const s = current.draft.sets[el.dataset.key];
     if (!s) return;
     if (el.dataset.field === 'weight') s.weight = parseWeight(el.value);

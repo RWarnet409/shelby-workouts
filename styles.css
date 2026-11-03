@@ -353,3 +353,32 @@ details.banner p { margin: 8px 0 2px; }
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 body[data-view="workout"] #toast { bottom: calc(var(--safe-bottom) + 132px); }
+
+/* ---- notes ----------------------------------------------------------- */
+.notes-card { padding-bottom: 14px; }
+.notes {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;              /* 16px+ stops iOS from zooming into the field */
+  line-height: 1.4;
+  resize: vertical;
+}
+.notes:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.note-preview { color: var(--text); font-style: italic; }
+.session-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--card);
+  font-style: italic;
+  white-space: pre-wrap;
+}

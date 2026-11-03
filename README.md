@@ -13,7 +13,8 @@ web/
                          offline / first-paint copy of the program (the Sheet's Program tab wins once loaded)
   manifest.webmanifest   PWA manifest (docs/SPEC.md §7)
   sw.js                  tiny service worker: network first, cached app shell when offline
-  icons/                 icon-192.png, icon-512.png, apple-touch-icon.png (180×180)
+  icons/                 icon.svg (source), icon-192.png, icon-512.png, apple-touch-icon.png (180×180 — iOS
+                         needs PNG; regenerate the PNGs from the SVG with headless Chrome + System.Drawing)
 ```
 
 ## Run it locally
@@ -42,8 +43,9 @@ real `/exec` URL and token in `config.js` and it talks to the Sheet.
   nothing). The draft is discarded the next day.
 - **Save workout** queues one `logSets` POST with every set that is ticked done or was edited, and
   only the ones that changed since the last save. A changed value after a save is a new row (the Log
-  tab is append-only; latest row per set wins). **Save & finish** also queues a `session` row and
-  returns Home, where "Next up" has moved on.
+  tab is append-only; latest row per set wins). The session row (completed flag, the Notes box, the
+  duration) is queued whenever it changed; the script updates the row in place by `client_id`.
+  **Save & finish** marks it completed and returns Home, where "Next up" has moved on.
 - The queue is retried after every save, when the phone comes back online, when the app is reopened,
   and from the Retry button on Home or Settings. `client_id`s make retries safe.
 - Week lives on Home (stepper). After Day 4 of the current week is finished, Home offers "Start Week

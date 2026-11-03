@@ -50,6 +50,11 @@ real `/exec` URL and token in `config.js` and it talks to the Sheet.
   **Save & finish** marks it completed and returns Home, where "Next up" has moved on.
 - The queue is retried after every save, when the phone comes back online, when the app is reopened,
   and from the Retry button on Home or Settings. `client_id`s make retries safe.
+- **swap** (under an exercise name) replaces that Program slot for today with another exercise from
+  the Sheet's `Exercises` tab, same body part, same category first. The swap lives in the day's draft;
+  logged sets name the exercise done plus `swapped_from`. **☆ favorite** queues a `favorite` POST
+  (the `Favorites` tab) and marks the exercise ★ in the picker. Both links appear only when the
+  bootstrap carries an `exercises` list, i.e. once the Sheet has the tab and the script is current.
 - Week lives on Home (stepper). After Day 4 of the current week is finished, Home offers "Start Week
   N+1" with one tap; after Day 3, the same offer appears when Day 1 is opened next.
 

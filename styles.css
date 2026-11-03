@@ -212,8 +212,43 @@ details.banner p { margin: 8px 0 2px; }
 .ex-target { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .ex-history, .ex-video { font-size: 13px; margin-left: 6px; padding: 14px 6px; white-space: nowrap; }   /* padding = a 44px tall tap target without changing the line */
 .ex-video { font-weight: 600; }
-.ex-sub { padding-left: 8px; font-size: 13px; line-height: 1.2; }  /* "history" under the name, indented */
+.ex-sub { padding-left: 8px; font-size: 13px; line-height: 1.2; }  /* "history · swap · ☆ favorite" under the name, indented */
 .ex-sub .ex-history { margin-left: 0; }
+.ex-link, .ex-fav {                                        /* link-styled buttons on the history line */
+  border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--accent); padding: 14px 6px; margin-left: 4px; white-space: nowrap;
+}
+.ex-fav[aria-pressed="true"] { color: var(--warn); }
+.ex-link.inline { padding: 8px 4px; margin: 0; }
+.ex-swapped { font-size: 13px; color: var(--muted); padding-left: 8px; }
+
+/* ---- swap picker (bottom sheet) ------------------------------------------ */
+#sheet { position: fixed; inset: 0; z-index: 40; }
+#sheet[hidden] { display: none; }
+.sheet-backdrop { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(0, 0, 0, 0.45); }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  max-height: 84vh; display: flex; flex-direction: column;
+  padding: 14px 16px calc(var(--safe-bottom) + 12px);
+  background: var(--card); border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25);
+}
+.sheet h3 { margin: 0 0 2px; }
+.sheet h4 { margin: 12px 0 2px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pick-row { display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--line); }
+.pick-row:first-of-type, h4 + .pick-row { border-top: 0; }
+.pick {
+  flex: 1 1 auto; min-width: 0; min-height: 52px; padding: 6px 4px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  border: 0; background: none; font: inherit; color: var(--text); text-align: left;
+}
+.pick-name { font-weight: 600; font-size: 16px; }
+.pick-meta { font-size: 13px; color: var(--muted); }
+.pick-row .ex-video { margin: 0; padding: 14px 8px; }
+.sheet-actions { display: grid; gap: 8px; padding-top: 10px; }
+.sheet-actions .btn { margin: 0; }
+body.sheet-open { overflow: hidden; }
 .set-row.set-head { min-height: 0; padding: 2px 0 0; }   /* the rep target over the reps column */
 .set-head .ex-target { justify-self: center; font-size: 13px; }   /* centred on the reps column even when wider than it */
 .head-unit { visibility: hidden; }                        /* keeps the header's columns the same width as the set rows */

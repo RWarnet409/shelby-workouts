@@ -14,7 +14,7 @@ import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '4';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '5';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -177,7 +177,9 @@ function videoKey(name) { return String(name || '').toLowerCase().replace(/\s+/g
 function videoHref(name) {
   const key = videoKey(name);
   if (!key) return '';
-  const entry = VIDEO_LOOKUP.has(key) ? VIDEO_LOOKUP.get(key) : name + ' proper form';
+  const lib = libraryRow(name);                       // a `video` cell in the Exercises tab wins
+  const entry = lib && lib.video ? lib.video
+    : VIDEO_LOOKUP.has(key) ? VIDEO_LOOKUP.get(key) : name + ' proper form';
   if (!entry) return '';
   if (/^https?:\/\//i.test(entry)) return entry;
   return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry);
@@ -191,6 +193,63 @@ function videoLink(name) {
 
 function unitLabel(unit) {
   return unit === 'time' ? 'sec' : unit === 'minutes' ? 'min' : 'reps';
+}
+
+// ---- exercise library (the Exercises tab), swaps and favorites ------------------------
+// The library is what makes "swap" and "☆ favorite" appear: without an Exercises tab in the Sheet
+// (or with the old script, which doesn't send it) the workout page looks as it did before.
+function libKey(name) { return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+function hasLibrary() { return state.exercises.length > 0; }
+function libraryRow(name) {
+  const k = libKey(name);
+  return state.exercises.find(e => libKey(e.exercise) === k) || null;
+}
+function isFavorite(name) {
+  const k = libKey(name);
+  return state.favorites.some(f => libKey(f) === k);
+}
+
+// A swapped-in exercise takes the slot's place in the block (same number of sets) and brings its own
+// target, weight flag, unit and note from the library. `swapped_from` names the Program slot and is
+// written to the Log with every set, so Ryan can see what was done instead of what.
+function effectiveWorkout(workout, draft) {
+  const swaps = (draft && draft.swaps) || {};
+  return {
+    ...workout,
+    blocks: workout.blocks.map(b => ({
+      ...b,
+      exercises: b.exercises.map(row => {
+        if (b.sets === null || Number(b.sets) <= 0) return row;        // warm-up / finisher lines don't swap
+        const to = swaps[row.exercise];
+        const lib = to ? libraryRow(to) : null;
+        if (!lib || libKey(lib.exercise) === libKey(row.exercise)) return row;
+        return {
+          ...row, exercise: lib.exercise, target: lib.target || row.target, log_weight: !!lib.log_weight,
+          unit: lib.unit || row.unit, note: lib.note || '', swapped_from: row.exercise,
+        };
+      }),
+    })),
+  };
+}
+
+// Alternatives for one Program slot: same body part and category first, then the rest of that body
+// part; favorites first inside each group. Exercises already in today's workout are left out so two
+// rows never share a name.
+function swapOptions(slotName, workout) {
+  const slot = libraryRow(slotName);
+  if (!slot) return { slot: null, same: [], more: [] };
+  const inUse = new Set();
+  (workout ? workout.blocks : []).forEach(b => b.exercises.forEach(r => {
+    inUse.add(libKey(r.exercise));
+    if (r.swapped_from) inUse.add(libKey(r.swapped_from));
+  }));
+  const rank = (a, b) => (isFavorite(b.exercise) ? 1 : 0) - (isFavorite(a.exercise) ? 1 : 0) || a.exercise.localeCompare(b.exercise);
+  const pool = state.exercises.filter(e => libKey(e.body_part) === libKey(slot.body_part) && !inUse.has(libKey(e.exercise)));
+  return {
+    slot,
+    same: pool.filter(e => libKey(e.category) === libKey(slot.category)).sort(rank),
+    more: pool.filter(e => libKey(e.category) !== libKey(slot.category)).sort(rank),
+  };
 }
 
 // Progression nudge (SPEC §5.2): last time every done set reached the top of the range → suggest more.
@@ -255,6 +314,8 @@ const state = {
   programUpdatedAt: null,   // ISO time of the last successful bootstrap
   last: {},                 // exercise → { date, weight, reps, sets: [{ set_number, weight, reps, done }] }
   sessions: [],             // most recent first
+  exercises: [],            // the Exercises tab: swap library rows { exercise, body_part, category, target, ... }
+  favorites: [],            // exercise names Shelby has starred (Favorites tab; latest row per exercise wins)
   week: 1,
   syncing: false,
   refreshing: false,
@@ -272,6 +333,8 @@ function applyBootstrap(b, source) {
   }
   if (b.last && typeof b.last === 'object') state.last = b.last;
   if (Array.isArray(b.sessions)) state.sessions = b.sessions;
+  if (Array.isArray(b.exercises)) state.exercises = b.exercises;   // absent from the old script → keep what we have
+  if (Array.isArray(b.favorites)) state.favorites = b.favorites;
   if (b.fetchedAt) state.programUpdatedAt = b.fetchedAt;
 }
 
@@ -280,6 +343,8 @@ function persistBootstrapCache() {
     program: state.programSource === 'fallback' ? [] : state.program,
     last: state.last,
     sessions: state.sessions,
+    exercises: state.exercises,
+    favorites: state.favorites,
     fetchedAt: state.programUpdatedAt,
   });
 }
@@ -361,6 +426,26 @@ function replayQueueIntoState() {
     const idx = state.sessions.findIndex(s => s.client_id === i.session.client_id);
     if (idx >= 0) state.sessions[idx] = rec; else state.sessions.unshift(rec);
   });
+  queuedItems('favorite').forEach(i => {
+    const k = libKey(i.favorite.exercise);
+    state.favorites = state.favorites.filter(f => libKey(f) !== k);
+    if (i.favorite.favorite) state.favorites.push(i.favorite.exercise);
+  });
+}
+
+// Star / unstar an exercise: updates this phone at once and queues one row for the Favorites tab.
+// A newer toggle for the same exercise replaces an older one still waiting in the queue.
+function toggleFavorite(name) {
+  const on = !isFavorite(name);
+  const k = libKey(name);
+  state.favorites = state.favorites.filter(f => libKey(f) !== k);
+  if (on) state.favorites.push(name);
+  const q = readQueue().filter(i => !(i.action === 'favorite' && libKey(i.favorite.exercise) === k));
+  q.push({ id: uuid(), createdAt: new Date().toISOString(), action: 'favorite',
+    favorite: { client_id: uuid(), exercise: name, favorite: on } });
+  writeQueue(q);
+  persistBootstrapCache();
+  return on;
 }
 
 // Send everything in the queue, oldest first. Items that fail stay queued for the next try.
@@ -377,8 +462,8 @@ async function flushQueue() {
         processed.add(item.id);
         if (networkDown) { failed.push(item); continue; }
         try {
-          const body = item.action === 'session'
-            ? { action: 'session', session: item.session }
+          const body = item.action === 'session' ? { action: 'session', session: item.session }
+            : item.action === 'favorite' ? { action: 'favorite', favorite: item.favorite }
             : { action: 'logSets', sets: item.sets };
           const res = await apiPost(body);
           if (res && res.ok) continue;
@@ -454,7 +539,10 @@ function setKey(exercise, n) { return exercise + '|' + n; }
 function loadDraft(dayId, phase) {
   const today = todayIso();
   const d = lsGet(draftKey(dayId), null);
-  if (d && d.date === today && d.phase === phase) return d;
+  if (d && d.date === today && d.phase === phase) {
+    if (!d.swaps) d.swaps = {};               // drafts from before swaps existed
+    return d;
+  }
   return {
     dayId, date: today, phase,
     createdAt: new Date().toISOString(),
@@ -462,6 +550,7 @@ function loadDraft(dayId, phase) {
     sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig }
     checks: {},                               // warmup / finisher lines → true when ticked
     checksSent: {},
+    swaps: {},                                // Program exercise → the library exercise done instead, today only
     note: '',                                 // the Notes box at the bottom of the page
     completed: false,                         // true once Save & finish has been tapped
     durationMin: null,                        // minutes from the first tap to Save & finish
@@ -504,8 +593,8 @@ function collectSetsToSend(draft, workout) {
           const sig = [s.weight === null ? '' : s.weight, s.reps === null ? '' : s.reps, s.done ? 1 : 0].join('|');
           if (s.sentSig === sig) continue;
           s.sentSig = sig;
-          out.push({ ...base, client_id: uuid(), exercise: row.exercise, set_number: i,
-            weight: row.log_weight ? s.weight : null, reps: s.reps, done: !!s.done });
+          out.push({ ...base, client_id: uuid(), exercise: row.exercise, swapped_from: row.swapped_from || '',
+            set_number: i, weight: row.log_weight ? s.weight : null, reps: s.reps, done: !!s.done });
         }
       } else if (draft.checks[row.exercise] && !draft.checksSent[row.exercise]) {
         draft.checksSent[row.exercise] = true;
@@ -663,8 +752,8 @@ function homeView() {
 // ---- Workout ------------------------------------------------------------------------
 function workoutView(dayId) {
   const phase = phaseForWeek(state.week);
-  const workout = workoutFor(phase, dayId);
   const draft = loadDraft(dayId, phase);
+  const workout = effectiveWorkout(workoutFor(phase, dayId), draft);   // today's swaps applied
   current = { draft, workout };
   const m = dayMeta(dayId);
   const pi = phaseInfo(phase);
@@ -729,9 +818,22 @@ function exerciseSets(row, n, draft) {
   const nudge = nudgeFor(row);
   // Name with "▶ how to" right after it; "history" on its own line under the name; the rep target
   // sits over the reps column in a header row that uses the same grid as the set rows.
+  const slot = row.swapped_from || row.exercise;             // the Program exercise this row stands for
+  let sub = '<a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a>';
+  if (hasLibrary()) {
+    const opts = swapOptions(slot, current && current.workout);
+    if (opts.same.length || opts.more.length || row.swapped_from) {
+      sub += '<button type="button" class="ex-link" data-action="swap" data-slot="' + esc(slot) + '">swap</button>';
+    }
+    sub += favButton(row.exercise);
+  }
   let html = '<div class="exercise">' +
     '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</div>' +
-    '<div class="ex-sub"><a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a></div>';
+    '<div class="ex-sub">' + sub + '</div>';
+  if (row.swapped_from) {
+    html += '<div class="ex-swapped">in place of ' + esc(row.swapped_from) +
+      ' · <button type="button" class="ex-link inline" data-action="unswap" data-slot="' + esc(row.swapped_from) + '">undo</button></div>';
+  }
   if (last) html += '<div class="ex-last">last time: ' + esc(last) + '</div>';
   if (nudge) html += '<div class="ex-nudge">' + esc(nudge) + '</div>';
   if (row.note) html += '<div class="ex-note">' + esc(row.note) + '</div>';
@@ -770,6 +872,72 @@ function checkLine(row, draft) {
     '<span class="check-text"><span class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</span>' +
     '<span class="ex-target">' + esc(row.target) + '</span>' +
     (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') + '</span></div>';
+}
+
+function favButton(name) {
+  const on = isFavorite(name);
+  return '<button type="button" class="ex-fav" data-action="fav" data-exercise="' + esc(name) + '"' +
+    ' aria-pressed="' + (on ? 'true' : 'false') + '"' +
+    ' aria-label="' + (on ? 'Remove ' + esc(name) + ' from favorites' : 'Mark ' + esc(name) + ' as a favorite') + '">' +
+    (on ? '★ favorite' : '☆ favorite') + '</button>';
+}
+
+// ---- Swap picker (a bottom sheet over the workout) --------------------------------------
+function openSwapSheet(slot) {
+  if (!current) return;
+  const { workout } = current;
+  const opts = swapOptions(slot, workout);
+  const rowNow = workout.blocks.flatMap(b => b.exercises).find(r => (r.swapped_from || r.exercise) === slot);
+  const nameNow = rowNow ? rowNow.exercise : slot;
+  const item = e => '<div class="pick-row">' +
+    '<button type="button" class="pick" data-action="pick-swap" data-slot="' + esc(slot) + '" data-exercise="' + esc(e.exercise) + '">' +
+    '<span class="pick-name">' + (isFavorite(e.exercise) ? '★ ' : '') + esc(e.exercise) + '</span>' +
+    '<span class="pick-meta">' + esc(e.target || '') + (e.log_weight ? '' : ' · bodyweight') + (e.note ? ' · ' + esc(e.note) : '') + '</span>' +
+    '</button>' + videoLink(e.exercise) + '</div>';
+  let body = '';
+  if (!opts.slot) {
+    body = '<p class="muted">' + esc(slot) + ' isn\'t in the Exercises tab yet, so there is nothing to swap it for.</p>';
+  } else {
+    if (opts.same.length) body += '<h4>Same type · ' + esc(opts.slot.category) + '</h4>' + opts.same.map(item).join('');
+    if (opts.more.length) body += '<h4>More ' + esc(opts.slot.body_part) + '</h4>' + opts.more.map(item).join('');
+    if (!opts.same.length && !opts.more.length) body += '<p class="muted">Every other ' + esc(opts.slot.body_part) + ' exercise is already in today\'s workout.</p>';
+  }
+  const back = nameNow !== slot
+    ? '<button type="button" class="btn ghost" data-action="unswap" data-slot="' + esc(slot) + '">Back to ' + esc(slot) + '</button>'
+    : '';
+  const sheet = document.getElementById('sheet');
+  sheet.innerHTML = '<button type="button" class="sheet-backdrop" data-action="close-sheet" aria-label="Close"></button>' +
+    '<div class="sheet" role="dialog" aria-modal="true" aria-label="Swap ' + esc(nameNow) + '">' +
+    '<h3>Swap ' + esc(nameNow) + '</h3>' +
+    (opts.slot ? '<p class="muted small">' + esc(opts.slot.body_part) + ' · ' + esc(opts.slot.category) + ' · favorites first</p>' : '') +
+    '<div class="sheet-body">' + body + '</div>' +
+    '<div class="sheet-actions">' + back +
+    '<button type="button" class="btn ghost" data-action="close-sheet">Cancel</button></div></div>';
+  sheet.hidden = false;
+  document.body.classList.add('sheet-open');
+}
+
+function closeSheet() {
+  const sheet = document.getElementById('sheet');
+  if (!sheet || sheet.hidden) return;
+  sheet.hidden = true;
+  sheet.innerHTML = '';
+  document.body.classList.remove('sheet-open');
+}
+
+// Swap a slot for `exercise` (or back to the Program exercise when null), then redraw in place.
+function applySwap(slot, exercise) {
+  if (!current) return;
+  const draft = current.draft;
+  if (!draft.swaps) draft.swaps = {};
+  if (!exercise || libKey(exercise) === libKey(slot)) delete draft.swaps[slot];
+  else draft.swaps[slot] = exercise;
+  markStarted(draft);
+  saveDraft(draft);
+  closeSheet();
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
 }
 
 // ---- History ------------------------------------------------------------------------
@@ -854,7 +1022,9 @@ function renderSessionSets(session, rows, note) {
     const row = order.find(e => e.exercise === n);
     const unit = unitLabel(row ? row.unit : 'reps');
     const sets = byExercise.get(n).sort((a, b) => Number(a.set_number) - Number(b.set_number));
-    return '<div class="card"><h3>' + esc(n) + '</h3>' + sets.map(s =>
+    const swappedFrom = String(sets[0].swapped_from || '').trim();
+    return '<div class="card"><h3>' + esc(n) +
+      (swappedFrom ? ' <span class="muted small">in place of ' + esc(swappedFrom) + '</span>' : '') + '</h3>' + sets.map(s =>
       '<div class="set-line"><span>Set ' + esc(s.set_number) + '</span><span>' + esc(setText(s, row, unit)) + '</span>' +
       '<span class="tick">' + (isTrue(s.done) ? '✓' : '') + '</span></div>').join('') + '</div>';
   }).join('');
@@ -865,7 +1035,7 @@ function renderSessionSets(session, rows, note) {
 // ---- Exercise history ---------------------------------------------------------------
 function exerciseView(name) {
   return '<section class="exercise-history"><h2 class="day-title">' + esc(name) + '</h2>' +
-    '<p class="day-sub">Last 10 sessions, newest first' + videoLink(name) + '</p>' +
+    '<p class="day-sub">Last 10 sessions, newest first' + videoLink(name) + (hasLibrary() ? favButton(name) : '') + '</p>' +
     '<div id="exercise-rows"><p class="muted">Loading…</p></div></section>';
 }
 
@@ -915,6 +1085,10 @@ function settingsView() {
   const programText = state.programSource === 'fallback'
     ? 'Showing the built-in copy of the program (the sheet has not answered yet).'
     : 'Program from the sheet' + (state.programUpdatedAt ? ', last refreshed ' + fmtDateLong(state.programUpdatedAt) + ' ' + fmtTime(state.programUpdatedAt) : '') + '.';
+  const nFav = state.favorites.length;
+  const libText = hasLibrary()
+    ? state.exercises.length + ' exercises in the swap library · ' + nFav + ' favorite' + (nFav === 1 ? '' : 's') + '.'
+    : 'No Exercises tab from the sheet yet — swap and ☆ favorite stay hidden until there is one.';
   return '<section class="settings">' +
     '<div class="card"><h3>Connection</h3><p id="conn-status" class="muted">' +
     (apiConfigured() ? 'Checking…' : 'Not configured — put the script URL and token in web/config.js.') + '</p>' +
@@ -923,7 +1097,7 @@ function settingsView() {
     (q ? q + ' save' + (q === 1 ? '' : 's') + ' waiting to sync.' + (bad ? ' Last problem: ' + esc(friendlyError(bad.lastError)) + '.' : '')
        : 'Everything is saved to the sheet.') + '</p>' +
     '<button type="button" class="btn ghost" data-action="retry-sync"' + (q ? '' : ' disabled') + '>Retry queued saves (' + q + ')</button></div>' +
-    '<div class="card"><h3>Program</h3><p class="muted">' + esc(programText) + '</p>' +
+    '<div class="card"><h3>Program</h3><p class="muted">' + esc(programText) + '</p><p class="muted">' + esc(libText) + '</p>' +
     '<button type="button" class="btn ghost" data-action="reload-program"' + (apiConfigured() ? '' : ' disabled') + '>Reload from the sheet</button></div>' +
     '<p class="muted small" style="text-align:center">Shelby\'s Workouts · app v' + APP_VERSION + '</p>' +
     '</section>';
@@ -988,6 +1162,7 @@ function renderTopbar(route) {
 }
 
 function render() {
+  closeSheet();
   const route = parseHash();
   state.route = route;
   if (route.name !== 'workout') current = null;
@@ -1094,6 +1269,22 @@ async function handleAction(action, btn) {
       else showToast('Couldn\'t reach the sheet right now');
       break;
     case 'ping': pingAndShow(state.route); break;
+    case 'swap': openSwapSheet(btn.dataset.slot); break;
+    case 'pick-swap': applySwap(btn.dataset.slot, btn.dataset.exercise); break;
+    case 'unswap': applySwap(btn.dataset.slot, null); break;
+    case 'close-sheet': closeSheet(); break;
+    case 'fav': {
+      const name = btn.dataset.exercise;
+      const on = toggleFavorite(name);
+      document.querySelectorAll('.ex-fav').forEach(b => {        // every star for this exercise on the page
+        if (libKey(b.dataset.exercise) !== libKey(name)) return;
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.textContent = on ? '★ favorite' : '☆ favorite';
+      });
+      showToast(on ? '★ Added to favorites' : 'Removed from favorites');
+      flushQueue().then(rerenderIfPassive);
+      break;
+    }
     default: break;
   }
 }
@@ -1128,7 +1319,7 @@ function bindViewEvents() {
     if (i >= 0 && inputs[i + 1]) inputs[i + 1].focus(); else e.target.blur();
   });
 
-  view.addEventListener('click', e => {
+  const onClick = e => {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.classList.contains('done') && current) {
@@ -1151,7 +1342,10 @@ function bindViewEvents() {
       return;
     }
     if (btn.dataset.action) { e.preventDefault(); handleAction(btn.dataset.action, btn); }
-  });
+  };
+  view.addEventListener('click', onClick);
+  document.getElementById('sheet').addEventListener('click', onClick);   // the swap picker lives outside #view
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 }
 
 function registerServiceWorker() {

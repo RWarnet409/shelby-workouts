@@ -11,9 +11,10 @@
 //   8. Events, routing, boot
 
 import { API_URL, TOKEN } from './config.js';
+import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '2';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '3';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -168,6 +169,25 @@ function parseTarget(target) {
 }
 
 function isMachine(name) { return /machine|cable|pulldown/i.test(name); }
+
+// "▶ how to" link for an exercise: videos.js entry if there is one, else a YouTube search for the
+// name. Returns '' when the entry is '' (cardio lines get no link).
+const VIDEO_LOOKUP = new Map(Object.entries(VIDEOS).map(([k, v]) => [videoKey(k), v]));
+function videoKey(name) { return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+function videoHref(name) {
+  const key = videoKey(name);
+  if (!key) return '';
+  const entry = VIDEO_LOOKUP.has(key) ? VIDEO_LOOKUP.get(key) : name + ' proper form';
+  if (!entry) return '';
+  if (/^https?:\/\//i.test(entry)) return entry;
+  return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry);
+}
+function videoLink(name) {
+  const href = videoHref(name);
+  if (!href) return '';
+  return '<a class="ex-video" href="' + esc(href) + '" target="_blank" rel="noopener"' +
+    ' aria-label="How to do ' + esc(name) + ' (opens YouTube)">▶ how to</a>';
+}
 
 function unitLabel(unit) {
   return unit === 'time' ? 'sec' : unit === 'minutes' ? 'min' : 'reps';
@@ -709,7 +729,7 @@ function exerciseSets(row, n, draft) {
   const nudge = nudgeFor(row);
   let html = '<div class="exercise">' +
     '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' +
-    '<span class="ex-target">' + esc(targetText(row)) +
+    '<span class="ex-target">' + esc(targetText(row)) + videoLink(row.exercise) +
     '<a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a></span></div>';
   if (last) html += '<div class="ex-last">last time: ' + esc(last) + '</div>';
   if (nudge) html += '<div class="ex-nudge">' + esc(nudge) + '</div>';
@@ -741,7 +761,7 @@ function checkLine(row, draft) {
   return '<div class="exercise check-line' + (on ? ' is-done' : '') + '">' +
     '<button type="button" class="done" data-check="' + esc(row.exercise) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(row.exercise) + ' done">✓</button>' +
     '<span class="check-text"><span class="ex-name">' + esc(row.exercise) + '</span>' +
-    '<span class="ex-target">' + esc(row.target) + '</span>' +
+    '<span class="ex-target">' + esc(row.target) + videoLink(row.exercise) + '</span>' +
     (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') + '</span></div>';
 }
 
@@ -838,7 +858,7 @@ function renderSessionSets(session, rows, note) {
 // ---- Exercise history ---------------------------------------------------------------
 function exerciseView(name) {
   return '<section class="exercise-history"><h2 class="day-title">' + esc(name) + '</h2>' +
-    '<p class="day-sub">Last 10 sessions, newest first</p>' +
+    '<p class="day-sub">Last 10 sessions, newest first' + videoLink(name) + '</p>' +
     '<div id="exercise-rows"><p class="muted">Loading…</p></div></section>';
 }
 

@@ -426,8 +426,8 @@
           "exercises": [
             {
               "exercise_order": 1,
-              "exercise": "Lat Pulldown Machine",
-              "target": "10–12",
+              "exercise": "Dumbbell One-Arm Row",
+              "target": "10–12/arm",
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
@@ -546,8 +546,8 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Plank Shoulder Taps",
-              "target": "20",
+              "exercise": "Bird Dog",
+              "target": "10/side",
               "log_weight": false,
               "bodyweight": true,
               "unit": "reps",
@@ -590,8 +590,8 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Russian Twists",
-              "target": "20",
+              "exercise": "Side-Lying Leg Raises",
+              "target": "15/side",
               "log_weight": false,
               "bodyweight": true,
               "unit": "reps",
@@ -608,7 +608,7 @@
             },
             {
               "exercise_order": 4,
-              "exercise": "Leg Raises",
+              "exercise": "Reverse Crunches",
               "target": "15",
               "log_weight": false,
               "bodyweight": true,
@@ -966,8 +966,8 @@
           "exercises": [
             {
               "exercise_order": 1,
-              "exercise": "Lat Pulldown Machine",
-              "target": "10–12",
+              "exercise": "Dumbbell One-Arm Row",
+              "target": "10–12/arm",
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
@@ -1086,8 +1086,8 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Plank Shoulder Taps",
-              "target": "20",
+              "exercise": "Bird Dog",
+              "target": "10/side",
               "log_weight": false,
               "bodyweight": true,
               "unit": "reps",
@@ -1130,10 +1130,10 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Russian Twists (med ball)",
-              "target": "20",
-              "log_weight": true,
-              "bodyweight": false,
+              "exercise": "Side-Lying Leg Raises",
+              "target": "15/side",
+              "log_weight": false,
+              "bodyweight": true,
               "unit": "reps",
               "note": ""
             },
@@ -1148,7 +1148,7 @@
             },
             {
               "exercise_order": 4,
-              "exercise": "Leg Raises",
+              "exercise": "Reverse Crunches",
               "target": "15",
               "log_weight": false,
               "bodyweight": true,
@@ -1506,8 +1506,8 @@
           "exercises": [
             {
               "exercise_order": 1,
-              "exercise": "Lat Pulldown Machine",
-              "target": "10–12",
+              "exercise": "Dumbbell One-Arm Row",
+              "target": "10–12/arm",
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
@@ -1626,8 +1626,8 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Plank Shoulder Taps",
-              "target": "20",
+              "exercise": "Bird Dog",
+              "target": "10/side",
               "log_weight": false,
               "bodyweight": true,
               "unit": "reps",
@@ -1670,10 +1670,10 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Russian Twists (med ball)",
-              "target": "20",
-              "log_weight": true,
-              "bodyweight": false,
+              "exercise": "Side-Lying Leg Raises",
+              "target": "15/side",
+              "log_weight": false,
+              "bodyweight": true,
               "unit": "reps",
               "note": ""
             },
@@ -1688,7 +1688,7 @@
             },
             {
               "exercise_order": 4,
-              "exercise": "Leg Raises",
+              "exercise": "Reverse Crunches",
               "target": "15",
               "log_weight": false,
               "bodyweight": true,

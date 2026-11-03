@@ -210,7 +210,9 @@ details.banner p { margin: 8px 0 2px; }
 .ex-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; }
 .ex-name { font-weight: 600; }
 .ex-target { font-size: 14px; color: var(--muted); white-space: nowrap; }
-.ex-history { font-size: 13px; margin-left: 6px; padding: 14px 6px; }   /* padding = a 44px tall tap target without changing the line */
+.ex-history, .ex-video { font-size: 13px; margin-left: 6px; padding: 14px 6px; white-space: nowrap; }   /* padding = a 44px tall tap target without changing the line */
+.ex-video { font-weight: 600; }
+.check-text .ex-video { display: inline-block; margin-left: 2px; }
 .ex-last { font-size: 13px; color: var(--muted); }
 .ex-note { font-size: 13px; color: var(--muted); font-style: italic; }
 .ex-nudge {

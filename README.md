@@ -11,6 +11,8 @@ web/
   config.example.js      template for config.js
   program.json           copy of ../data/program.json: phase banners, week notes, cool-downs, and the
                          offline / first-paint copy of the program (the Sheet's Program tab wins once loaded)
+  videos.js              the "▶ how to" lookup: exercise name → YouTube search phrase (or a specific video
+                         URL, or '' for no link). Unlisted exercises search "<name> proper form"
   manifest.webmanifest   PWA manifest (docs/SPEC.md §7)
   sw.js                  tiny service worker: network first, cached app shell when offline
   icons/                 icon.svg (source), icon-192.png, icon-512.png, apple-touch-icon.png (180×180 — iOS
@@ -57,3 +59,7 @@ Edit the `Program` tab in the Sheet; the app reflects it on the next open. `prog
 supplies the phase banners, week notes and cool-down lines (and the offline fallback), so regenerate
 and re-copy it (`python reference/gen_package.py`, then copy `data/program.json` here) only when
 those change.
+
+A new exercise gets a "▶ how to" link automatically (a YouTube search for "<name> proper form"). To
+tune the search phrase, or to pin a specific video once you have found a good one, add a line to
+`videos.js` and redeploy.

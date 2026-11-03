@@ -1,0 +1,1140 @@
+// app.js — Shelby's workout tracker. One ES module, no build step, no framework.
+//
+// Read it top to bottom:
+//   1. Config and constants
+//   2. localStorage helpers
+//   3. API helpers — apiGet / apiPost are the ONLY places that talk to the Apps Script
+//   4. Program helpers — phase for a week, the workout for a day, rep targets, the progression nudge
+//   5. App state, bootstrap (program + last weights + sessions), offline queue
+//   6. Drafts — the values typed into a workout, kept on this phone until they are saved
+//   7. Views — Home, Workout, History, Session, Exercise, Settings (each returns an HTML string)
+//   8. Events, routing, boot
+
+import { API_URL, TOKEN } from './config.js';
+
+// ------------------------------------------------------------------------------- 1. config
+const APP_VERSION = '1';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
+const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
+const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
+const LS = {
+  bootstrap: 'swa.bootstrap',                  // { program, last, sessions, fetchedAt } — last good API answer
+  programJson: 'swa.programJson',              // copy of program.json (phase banners, week notes, cool-downs)
+  week: 'swa.week',                            // the week shown on Home, once it has been set by hand
+  queue: 'swa.queue',                          // unsent POSTs: [{ id, action, sets | session, createdAt }]
+  dismissedSuggest: 'swa.dismissedSuggest',    // client_id of the session whose "next week?" banner was dismissed
+  draftPrefix: 'swa.draft.',                   // + day_id → the workout in progress for that day
+};
+
+// ------------------------------------------------------------------------------- 2. storage
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch (e) {
+    console.warn('localStorage read failed', key, e);
+    return fallback;
+  }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); }
+  catch (e) { console.warn('localStorage write failed', key, e); }
+}
+function lsRemove(key) {
+  try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+}
+
+// ------------------------------------------------------------------------------- 3. API
+function apiConfigured() {
+  return typeof API_URL === 'string' && API_URL.startsWith('https://') && !API_URL.includes('DEPLOYMENT_ID');
+}
+
+async function fetchWithTimeout(url, options) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try { return await fetch(url, { ...options, signal: ctrl.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+async function readJson(response) {
+  const text = await response.text();
+  try { return JSON.parse(text); }
+  catch (e) { throw new Error('non-JSON response (HTTP ' + response.status + ')'); }
+}
+
+// GET: token and params in the query string; follow the 302 that Apps Script answers with.
+export async function apiGet(params = {}) {
+  const u = new URL(API_URL);
+  Object.entries({ ...params, token: TOKEN }).forEach(([k, v]) => u.searchParams.set(k, v));
+  const r = await fetchWithTimeout(u, { redirect: 'follow' });
+  return readJson(r);
+}
+
+// POST: JSON in a text/plain body, so the browser skips the CORS preflight Apps Script cannot answer.
+export async function apiPost(body) {
+  const r = await fetchWithTimeout(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ ...body, token: TOKEN }),
+  });
+  return readJson(r);
+}
+
+// ------------------------------------------------------------------------------- 4. program helpers
+function phaseForWeek(week) {
+  return week <= 2 ? 1 : week <= 4 ? 2 : 3;      // weeks 7+ keep using Phase 3
+}
+
+function phaseInfo(phase) {
+  const phases = (state.programJson && state.programJson.phases) || [];
+  return phases.find(p => p.phase === phase) || null;
+}
+
+function weekNote(week) {
+  const notes = (state.programJson && state.programJson.week_notes) || {};
+  if (notes[String(week)]) return notes[String(week)];
+  if (week >= 7) {
+    return 'Week ' + week + ': the 6 weeks are done. Take one light week (Week 1 sets and weights), ' +
+      'then set the week back to 3 and restart with your Week 6 weights.';
+  }
+  return '';
+}
+
+// program.json → the same flat rows the Sheet's Program tab gives us. Used until the API has answered.
+function flattenProgramJson(pj) {
+  const rows = [];
+  const days = {};
+  (pj.days || []).forEach(d => { days[d.day_id] = d; });
+  (pj.workouts || []).forEach(w => {
+    const day = days[w.day_id] || {};
+    const ph = (pj.phases || []).find(p => p.phase === w.phase) || {};
+    const weeks = ph.weeks || [];
+    (w.blocks || []).forEach(b => (b.exercises || []).forEach(e => rows.push({
+      phase: w.phase, phase_name: ph.name || '',
+      week_start: weeks[0] || null, week_end: weeks[weeks.length - 1] || null,
+      day_id: w.day_id, day_label: day.day_label || '', weekday: day.weekday || '',
+      focus: day.focus || '', minutes: day.minutes || null,
+      block_order: b.block_order, block: b.block, block_type: b.block_type, sets: b.sets,
+      exercise_order: e.exercise_order, exercise: e.exercise, target: e.target,
+      log_weight: !!e.log_weight, unit: e.unit || 'reps', note: e.note || '',
+    })));
+  });
+  return rows;
+}
+
+function dayMeta(dayId) {
+  const fromJson = ((state.programJson && state.programJson.days) || []).find(d => d.day_id === dayId) || {};
+  const row = state.program.find(r => r.day_id === dayId) || {};      // the Sheet wins when it has a value
+  return {
+    day_id: dayId,
+    day_label: row.day_label || fromJson.day_label || dayId,
+    weekday: row.weekday || fromJson.weekday || '',
+    focus: row.focus || fromJson.focus || '',
+    minutes: row.minutes || fromJson.minutes || null,
+  };
+}
+
+// The blocks and exercises for one day in one phase, in display order.
+function workoutFor(phase, dayId) {
+  const rows = state.program.filter(r => Number(r.phase) === phase && r.day_id === dayId);
+  const blocks = new Map();
+  rows.forEach(r => {
+    const key = Number(r.block_order);
+    if (!blocks.has(key)) {
+      blocks.set(key, {
+        block_order: key, block: r.block, block_type: r.block_type,
+        sets: r.sets === null || r.sets === undefined || r.sets === '' ? null : Number(r.sets),
+        exercises: [],
+      });
+    }
+    blocks.get(key).exercises.push(r);
+  });
+  const list = [...blocks.values()].sort((a, b) => a.block_order - b.block_order);
+  list.forEach(b => b.exercises.sort((a, c) => Number(a.exercise_order) - Number(c.exercise_order)));
+  const wj = ((state.programJson && state.programJson.workouts) || [])
+    .find(w => w.phase === phase && w.day_id === dayId);
+  return { phase, dayId, blocks: list, cooldown: (wj && wj.cooldown) || '' };
+}
+
+// "10–12" → {min 10, max 12}; "30–45 sec" → {30, 45}; "10/leg" → {10, 10}; "" → {null, null}
+function parseTarget(target) {
+  const t = String(target || '');
+  const range = t.match(/(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)/);
+  if (range) return { min: Number(range[1]), max: Number(range[2]) };
+  const single = t.match(/(\d+(?:\.\d+)?)/);
+  if (single) return { min: Number(single[1]), max: Number(single[1]) };
+  return { min: null, max: null };
+}
+
+function isMachine(name) { return /machine|cable|pulldown/i.test(name); }
+
+function unitLabel(unit) {
+  return unit === 'time' ? 'sec' : unit === 'minutes' ? 'min' : 'reps';
+}
+
+// Progression nudge (SPEC §5.2): last time every done set reached the top of the range → suggest more.
+function nudgeFor(row) {
+  if (!row.log_weight) return null;
+  const le = state.last[row.exercise];
+  if (!le || !Array.isArray(le.sets) || !le.sets.length) return null;
+  const t = parseTarget(row.target);
+  if (t.max === null || t.min === t.max) return null;          // no range to be at the top of
+  const done = le.sets.filter(s => s.done);
+  if (!done.length) return null;
+  const allTop = done.every(s => Number(s.reps) >= t.max);
+  if (!allTop) return null;
+  if (isMachine(row.exercise)) return 'All sets hit ' + t.max + '+ last time — go up one pin';
+  if (le.weight === null || le.weight === undefined) return 'All sets hit ' + t.max + '+ last time — try a little more weight';
+  return 'All sets hit ' + t.max + '+ last time — try ' + fmtNum(Number(le.weight) + 2.5) + ' lb';
+}
+
+// "15 lb × 12, 12, 11" or "15×12, 17.5×10" (weights differ) or "12, 12 reps" (bodyweight)
+function setsSummary(sets, row) {
+  const unit = unitLabel(row ? row.unit : 'reps');
+  const ws = sets.map(s => (s.weight === '' || s.weight === null || s.weight === undefined) ? null : Number(s.weight));
+  const rs = sets.map(s => (s.reps === '' || s.reps === null || s.reps === undefined) ? '–' : String(s.reps));
+  const allSame = ws.every(w => w === ws[0]);
+  if (allSame) {
+    if (ws[0] === null) return rs.join(', ') + ' ' + unit;
+    return fmtNum(ws[0]) + ' lb × ' + rs.join(', ');
+  }
+  return sets.map((s, i) => (ws[i] === null ? 'BW' : fmtNum(ws[i])) + '×' + rs[i]).join(', ');
+}
+
+function lastTimeText(row) {
+  const le = state.last[row.exercise];
+  if (!le) return '';
+  const sets = (le.sets || []).slice().sort((a, b) => a.set_number - b.set_number);
+  if (sets.length) return setsSummary(sets, row) + (le.date ? ' · ' + fmtDate(le.date) : '');
+  if (le.weight !== null && le.weight !== undefined) return fmtNum(le.weight) + ' lb';
+  return '';
+}
+
+// Default values for a set before Shelby touches it: last time's numbers, else the target's low end.
+function prefill(row, setNo) {
+  const le = state.last[row.exercise];
+  const t = parseTarget(row.target);
+  let weight = null;
+  let reps = null;
+  if (le) {
+    const same = (le.sets || []).find(s => Number(s.set_number) === setNo);
+    weight = same && same.weight !== null && same.weight !== undefined ? same.weight : le.weight;
+    reps = same && same.reps !== null && same.reps !== undefined && same.reps !== '' ? same.reps : le.reps;
+  }
+  if (!row.log_weight) weight = null;
+  if (reps === null || reps === undefined || reps === '') reps = t.min;
+  return { weight: weight === undefined ? null : weight, reps: reps === undefined ? null : reps };
+}
+
+// ------------------------------------------------------------------------------- 5. state & data
+const state = {
+  programJson: null,        // contents of program.json
+  program: [],              // flat Program rows (from the API, the cache, or program.json)
+  programSource: 'none',    // 'api' | 'cache' | 'fallback'
+  programUpdatedAt: null,   // ISO time of the last successful bootstrap
+  last: {},                 // exercise → { date, weight, reps, sets: [{ set_number, weight, reps, done }] }
+  sessions: [],             // most recent first
+  week: 1,
+  syncing: false,
+  refreshing: false,
+  queueCount: 0,
+  route: { name: 'home' },
+  prevHash: '',
+};
+
+let current = null;         // { draft, workout } while the Workout view is open
+
+function applyBootstrap(b, source) {
+  if (Array.isArray(b.program) && b.program.length) {
+    state.program = b.program;
+    state.programSource = source;
+  }
+  if (b.last && typeof b.last === 'object') state.last = b.last;
+  if (Array.isArray(b.sessions)) state.sessions = b.sessions;
+  if (b.fetchedAt) state.programUpdatedAt = b.fetchedAt;
+}
+
+function persistBootstrapCache() {
+  lsSet(LS.bootstrap, {
+    program: state.programSource === 'fallback' ? [] : state.program,
+    last: state.last,
+    sessions: state.sessions,
+    fetchedAt: state.programUpdatedAt,
+  });
+}
+
+async function loadProgramJson() {
+  const cached = lsGet(LS.programJson, null);
+  if (cached) state.programJson = cached;
+  const fetchIt = fetch('./program.json')
+    .then(r => (r.ok ? r.json() : null))
+    .then(pj => { if (pj) { state.programJson = pj; lsSet(LS.programJson, pj); } })
+    .catch(e => console.warn('program.json not reachable', e));
+  if (!cached) await fetchIt;                 // first ever load: wait for it; later loads use the copy
+}
+
+function isStale() {
+  if (!state.programUpdatedAt) return true;
+  return Date.now() - new Date(state.programUpdatedAt).getTime() > STALE_AFTER_MS;
+}
+
+async function refreshBootstrap() {
+  if (!apiConfigured() || state.refreshing) return false;
+  state.refreshing = true;
+  try {
+    const res = await apiGet({ action: 'bootstrap' });
+    if (!res || !res.ok) throw new Error((res && res.error) || 'bad response');
+    res.fetchedAt = new Date().toISOString();
+    applyBootstrap(res, 'api');
+    replayQueueIntoState();                   // keep unsynced saves visible until they land
+    persistBootstrapCache();
+    return true;
+  } catch (e) {
+    console.warn('bootstrap refresh failed', e);
+    return false;
+  } finally {
+    state.refreshing = false;
+  }
+}
+
+// ---- offline queue ----------------------------------------------------------------
+function readQueue() { return lsGet(LS.queue, []); }
+function writeQueue(q) { lsSet(LS.queue, q); state.queueCount = q.length; }
+function enqueue(item) {
+  const q = readQueue();
+  q.push({ id: uuid(), createdAt: new Date().toISOString(), ...item });
+  writeQueue(q);
+}
+function queuedItems(action) { return readQueue().filter(i => i.action === action); }
+function queuedSessionIds() { return new Set(queuedItems('session').map(i => i.session.client_id)); }
+function queuedSetRows(match) {
+  const out = [];
+  queuedItems('logSets').forEach(i => (i.sets || []).forEach(s => { if (match(s)) out.push(s); }));
+  return out;
+}
+
+// Mirror of lastPerExercise_() in Code.gs, applied to sets saved on this phone.
+function applySetsToLast(sets) {
+  sets.forEach(s => {
+    const e = state.last[s.exercise] || (state.last[s.exercise] = { date: null, weight: null, reps: null, sets: [] });
+    if (s.weight !== null && s.weight !== undefined) e.weight = s.weight;
+    if (e.date !== s.date) { e.date = s.date; e.sets = []; }
+    if (s.reps !== null && s.reps !== undefined && s.reps !== '') e.reps = s.reps;
+    const rec = { set_number: s.set_number, weight: s.weight, reps: s.reps, done: !!s.done };
+    const i = e.sets.findIndex(x => Number(x.set_number) === s.set_number);
+    if (i >= 0) e.sets[i] = rec; else e.sets.push(rec);
+    e.sets.sort((a, b) => a.set_number - b.set_number);
+  });
+}
+
+function replayQueueIntoState() {
+  queuedItems('logSets').forEach(i => applySetsToLast(i.sets || []));
+  const ids = new Set(state.sessions.map(s => s.client_id));
+  queuedItems('session').forEach(i => {
+    if (!ids.has(i.session.client_id)) {
+      state.sessions.unshift({ ...i.session, timestamp: i.createdAt });
+      ids.add(i.session.client_id);
+    }
+  });
+}
+
+// Send everything in the queue, oldest first. Items that fail stay queued for the next try.
+async function flushQueue() {
+  if (state.syncing || !apiConfigured()) return;
+  state.syncing = true;
+  const processed = new Set();
+  const failed = [];
+  try {
+    let pass = readQueue();
+    while (pass.length) {
+      let networkDown = false;
+      for (const item of pass) {
+        processed.add(item.id);
+        if (networkDown) { failed.push(item); continue; }
+        try {
+          const body = item.action === 'session'
+            ? { action: 'session', session: item.session }
+            : { action: 'logSets', sets: item.sets };
+          const res = await apiPost(body);
+          if (res && res.ok) continue;
+          item.lastError = (res && res.error) || 'rejected';
+          item.attempts = (item.attempts || 0) + 1;
+          failed.push(item);
+        } catch (e) {
+          item.lastError = 'network';
+          networkDown = true;
+          failed.push(item);
+        }
+      }
+      const added = readQueue().filter(i => !processed.has(i.id));   // saved while we were sending
+      writeQueue(failed.concat(added));
+      pass = networkDown ? [] : added;
+    }
+  } finally {
+    state.syncing = false;
+  }
+}
+
+// ---- week & next-up ---------------------------------------------------------------
+function isTrue(v) { return v === true || String(v).toLowerCase() === 'true'; }
+
+function lastCompletedSession() {
+  return state.sessions.find(s => isTrue(s.completed)) || null;
+}
+
+function nextUpDayId() {
+  const s = lastCompletedSession();
+  if (!s) return 'day1';
+  const i = DAY_ORDER.indexOf(s.day_id);
+  return i < 0 ? 'day1' : DAY_ORDER[(i + 1) % DAY_ORDER.length];
+}
+
+function doneThisWeek(dayId) {
+  const s = state.sessions.find(x => x.day_id === dayId && Number(x.week) === state.week && isTrue(x.completed));
+  return s ? s.date : null;
+}
+
+function initWeek() {
+  const stored = lsGet(LS.week, null);
+  if (Number.isInteger(stored) && stored >= 1) { state.week = stored; return; }
+  const s = lastCompletedSession();
+  state.week = s && Number(s.week) >= 1 ? Number(s.week) : 1;
+}
+
+function setWeek(week) {
+  state.week = Math.max(1, Math.round(week));
+  lsSet(LS.week, state.week);
+}
+
+// After Day 4 (or Day 3 when Day 1 is picked next) completes in the current week, offer the next week.
+function weekSuggestion(where, dayId) {
+  const s = lastCompletedSession();
+  if (!s || Number(s.week) !== state.week) return null;
+  if (lsGet(LS.dismissedSuggest, null) === s.client_id) return null;
+  const next = state.week + 1;
+  const onDay1 = where === 'workout' && dayId === 'day1';
+  if (s.day_id === 'day4' && (where === 'home' || onDay1)) {
+    return { next, sessionId: s.client_id, text: 'Week ' + state.week + ' done — nice. Ready for Week ' + next + '?' };
+  }
+  if (s.day_id === 'day3' && onDay1) {
+    return { next, sessionId: s.client_id, text: 'Back to Day 1? If Day 4 is skipped this week, this is Week ' + next + '.' };
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------------------- 6. drafts
+function draftKey(dayId) { return LS.draftPrefix + dayId; }
+function setKey(exercise, n) { return exercise + '|' + n; }
+
+function loadDraft(dayId, phase) {
+  const today = todayIso();
+  const d = lsGet(draftKey(dayId), null);
+  if (d && d.date === today && d.phase === phase) return d;
+  return {
+    dayId, date: today, phase,
+    createdAt: new Date().toISOString(),
+    startedAt: null,                          // first tap/typing; used for duration_min
+    sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig }
+    checks: {},                               // warmup / finisher lines → true when ticked
+    checksSent: {},
+    sessionClientId: uuid(),
+    sessionSent: false,
+  };
+}
+function saveDraft(d) { lsSet(draftKey(d.dayId), d); }
+
+let draftSaveTimer = null;
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => { if (current) saveDraft(current.draft); }, 250);
+}
+
+function getSetEntry(draft, row, n) {
+  const k = setKey(row.exercise, n);
+  if (!draft.sets[k]) {
+    const p = prefill(row, n);
+    draft.sets[k] = { exercise: row.exercise, set_number: n, weight: p.weight, reps: p.reps, done: false, touched: false, sentSig: null };
+  }
+  return draft.sets[k];
+}
+
+function markStarted(draft) {
+  if (!draft.startedAt) draft.startedAt = new Date().toISOString();
+}
+
+// Rows to send: sets that are done or were edited, and only when they changed since the last save.
+function collectSetsToSend(draft, workout) {
+  const out = [];
+  const base = { date: draft.date, week: state.week, phase: draft.phase, day_id: draft.dayId, note: '' };
+  workout.blocks.forEach(b => {
+    const n = b.sets === null ? 0 : Number(b.sets);
+    b.exercises.forEach(row => {
+      if (n > 0) {
+        for (let i = 1; i <= n; i++) {
+          const s = draft.sets[setKey(row.exercise, i)];
+          if (!s || !(s.done || s.touched)) continue;
+          const sig = [s.weight === null ? '' : s.weight, s.reps === null ? '' : s.reps, s.done ? 1 : 0].join('|');
+          if (s.sentSig === sig) continue;
+          s.sentSig = sig;
+          out.push({ ...base, client_id: uuid(), exercise: row.exercise, set_number: i,
+            weight: row.log_weight ? s.weight : null, reps: s.reps, done: !!s.done });
+        }
+      } else if (draft.checks[row.exercise] && !draft.checksSent[row.exercise]) {
+        draft.checksSent[row.exercise] = true;
+        out.push({ ...base, client_id: uuid(), exercise: row.exercise, set_number: 1, weight: null, reps: null, done: true });
+      }
+    });
+  });
+  return out;
+}
+
+function durationMinutes(draft) {
+  if (!draft.startedAt) return null;
+  const mins = Math.round((Date.now() - new Date(draft.startedAt).getTime()) / 60000);
+  return mins >= 5 && mins <= 180 ? mins : null;
+}
+
+// Queue the rows (and the session when finishing), update "last time" on this phone right away.
+function saveWorkout(draft, workout, finish) {
+  const sets = collectSetsToSend(draft, workout);
+  if (sets.length) {
+    enqueue({ action: 'logSets', sets });
+    applySetsToLast(sets);
+  }
+  let sessionQueued = false;
+  if (finish && !draft.sessionSent) {
+    const session = {
+      client_id: draft.sessionClientId, date: draft.date, week: state.week, phase: draft.phase,
+      day_id: draft.dayId, completed: true, duration_min: durationMinutes(draft), note: '',
+    };
+    enqueue({ action: 'session', session });
+    draft.sessionSent = true;
+    state.sessions = [{ ...session, timestamp: new Date().toISOString() }]
+      .concat(state.sessions.filter(s => s.client_id !== session.client_id));
+    lsRemove(LS.dismissedSuggest);
+    sessionQueued = true;
+  }
+  draft.week = state.week;
+  draft.lastSavedAt = new Date().toISOString();
+  saveDraft(draft);
+  persistBootstrapCache();
+  return { setsQueued: sets.length, sessionQueued };
+}
+
+// ------------------------------------------------------------------------------- 7. views
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '') return '';
+  const x = Number(n);
+  return isNaN(x) ? String(n) : String(Math.round(x * 100) / 100);
+}
+function parseIsoDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+function fmtDate(iso) {
+  const d = parseIsoDate(iso);
+  return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : String(iso || '');
+}
+function fmtDateLong(iso) {
+  const d = parseIsoDate(iso);
+  return d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : String(iso || '');
+}
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function todayIso() {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+}
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function weekLabel() {
+  const pi = phaseInfo(phaseForWeek(state.week));
+  return 'Week ' + state.week + ' · ' + (pi ? pi.name : 'Phase ' + phaseForWeek(state.week));
+}
+function friendlyError(err) {
+  if (err === 'unauthorized') return 'the script says the token is wrong';
+  if (err === 'network') return 'no connection';
+  return String(err || '').replace(/^Error:\s*/, '').slice(0, 120);
+}
+
+function suggestBanner(sug) {
+  return '<div class="suggest"><span>' + esc(sug.text) + '</span><span class="suggest-actions">' +
+    '<button type="button" class="btn small primary" data-action="accept-week" data-week="' + sug.next + '" data-sid="' + esc(sug.sessionId) + '">Start Week ' + sug.next + '</button>' +
+    '<button type="button" class="btn small ghost" data-action="dismiss-week" data-sid="' + esc(sug.sessionId) + '">Not yet</button>' +
+    '</span></div>';
+}
+
+// ---- Home ---------------------------------------------------------------------------
+function homeView() {
+  const next = nextUpDayId();
+  const sug = weekSuggestion('home');
+  const pj = state.programJson || {};
+  const rest = (pj.rest_days || ['Wednesday', 'Sunday']).join(' and ');
+  const restNote = (pj.rest_day_note || 'Rest day — walk Blu.').replace(/^Rest day\s*[—-]\s*/i, '');
+
+  const dayButton = (dayId, big) => {
+    const m = dayMeta(dayId);
+    const done = doneThisWeek(dayId);
+    const optional = dayId === 'day4' ? '<span class="tag">optional in a busy week</span>' : '';
+    if (big) {
+      return '<a class="next-up" href="#workout/' + dayId + '">' +
+        '<span class="eyebrow">Next up</span>' +
+        '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
+        '<span class="meta">~' + esc(m.minutes || '?') + ' min · ' + esc(m.weekday) + '</span>' + optional +
+        '</a>';
+    }
+    return '<a class="day-btn" href="#workout/' + dayId + '">' +
+      '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + optional + '</span>' +
+      '<span class="day-meta">' + (done ? '✓ ' + esc(fmtDate(done)) : '~' + esc(m.minutes || '?') + ' min') + '</span>' +
+      '</a>';
+  };
+
+  let html = '<section class="home">' +
+    '<div class="week-row"><div class="week-label">' + esc(weekLabel()) + '</div>' +
+    '<div class="stepper"><button type="button" data-action="week-minus" aria-label="Previous week">−</button>' +
+    '<button type="button" data-action="week-plus" aria-label="Next week">+</button></div></div>';
+  const wn = weekNote(state.week);
+  if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
+  if (sug) html += suggestBanner(sug);
+  html += dayButton(next, true);
+  html += '<p class="muted small" style="margin:14px 0 4px">Or pick another day — slide, don\'t skip:</p>';
+  DAY_ORDER.filter(d => d !== next).forEach(d => { html += dayButton(d, false); });
+  html += '<p class="rest-note">' + esc(rest) + ': rest — ' + esc(restNote) + '</p>';
+
+  if (!apiConfigured()) {
+    html += '<p class="sync-line warn">Not connected to the sheet yet — saves stay on this phone.</p>';
+  } else if (state.queueCount) {
+    html += '<p class="sync-line">' + state.queueCount + ' save' + (state.queueCount === 1 ? '' : 's') +
+      ' waiting to sync <button type="button" class="link" data-action="retry-sync">Retry</button></p>';
+  } else if (state.programSource === 'fallback') {
+    html += '<p class="sync-line">Couldn\'t reach the sheet — showing the built-in program.</p>';
+  }
+  return html + '</section>';
+}
+
+// ---- Workout ------------------------------------------------------------------------
+function workoutView(dayId) {
+  const phase = phaseForWeek(state.week);
+  const workout = workoutFor(phase, dayId);
+  const draft = loadDraft(dayId, phase);
+  current = { draft, workout };
+  const m = dayMeta(dayId);
+  const pi = phaseInfo(phase);
+  const sug = weekSuggestion('workout', dayId);
+
+  let html = '<section class="workout">' +
+    '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
+    '<p class="day-sub">' + esc(weekLabel()) + ' · ' + esc(fmtDateLong(draft.date)) +
+    (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>';
+  if (sug) html += suggestBanner(sug);
+  if (pi && pi.banner) {
+    const head = pi.banner.split(' — ')[0];
+    html += '<details class="banner"><summary>' + esc(head) + '</summary><p>' + esc(pi.banner) + '</p></details>';
+  }
+  const wn = weekNote(state.week);
+  if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
+  if (!workout.blocks.length) {
+    html += '<p class="empty">No exercises found for ' + esc(m.day_label) + ' in Phase ' + phase + '. Check the Program tab.</p>';
+  }
+  workout.blocks.forEach(b => { html += blockCard(b, draft); });
+  if (workout.cooldown) html += '<p class="cooldown">' + esc(workout.cooldown) + '</p>';
+  html += '</section>' +
+    '<div class="savebar"><div class="savebar-inner">' +
+    '<div id="save-status" class="save-status">' + esc(initialSaveStatus(draft)) + '</div>' +
+    '<div class="savebar-buttons">' +
+    '<button type="button" class="btn primary" data-action="save">Save workout</button>' +
+    '<button type="button" class="btn secondary" data-action="finish">Save &amp; finish</button>' +
+    '</div></div></div>';
+  saveDraft(draft);                            // persist the entries prefill just created
+  return html;
+}
+
+function initialSaveStatus(draft) {
+  if (state.queueCount) return state.queueCount + ' save' + (state.queueCount === 1 ? '' : 's') + ' waiting to sync';
+  if (draft.lastSavedAt) return 'Saved ✓ ' + fmtTime(draft.lastSavedAt);
+  return '';
+}
+
+function blockCard(b, draft) {
+  const n = b.sets === null ? 0 : Number(b.sets);
+  const hint = b.block_type === 'superset' ? 'A then B, rest 45–60 sec'
+    : b.block_type === 'circuit' ? 'All four back to back, rest 60–90 sec'
+    : b.block_type === 'abs' ? 'Back to back, rest 60 sec between rounds'
+    : '';
+  let html = '<section class="card block block-' + esc(b.block_type) + '"><h3>' + esc(b.block) + '</h3>' +
+    (hint ? '<p class="hint">' + esc(hint) + '</p>' : '');
+  b.exercises.forEach(row => { html += n > 0 ? exerciseSets(row, n, draft) : checkLine(row, draft); });
+  return html + '</section>';
+}
+
+function targetText(row) {
+  const t = String(row.target || '');
+  return (row.unit === 'reps' || !row.unit) && /^[\d–—-]+$/.test(t) ? t + ' reps' : t;
+}
+
+function exerciseSets(row, n, draft) {
+  const unit = unitLabel(row.unit);
+  const last = lastTimeText(row);
+  const nudge = nudgeFor(row);
+  let html = '<div class="exercise">' +
+    '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' +
+    '<span class="ex-target">' + esc(targetText(row)) +
+    '<a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a></span></div>';
+  if (last) html += '<div class="ex-last">last time: ' + esc(last) + '</div>';
+  if (nudge) html += '<div class="ex-nudge">' + esc(nudge) + '</div>';
+  if (row.note) html += '<div class="ex-note">' + esc(row.note) + '</div>';
+  for (let i = 1; i <= n; i++) {
+    const s = getSetEntry(draft, row, i);
+    const key = setKey(row.exercise, i);
+    const label = esc(row.exercise) + ' set ' + i;
+    html += '<div class="set-row' + (s.done ? ' is-done' : '') + '" data-row="' + esc(key) + '">' +
+      '<span class="set-label">Set ' + i + '</span>';
+    if (row.log_weight) {
+      html += '<input class="in in-weight" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder=""' +
+        ' value="' + esc(fmtNum(s.weight)) + '" data-key="' + esc(key) + '" data-field="weight" aria-label="' + label + ' weight">' +
+        '<span class="unit">lb</span>';
+    } else {
+      html += '<span class="in in-bw" title="bodyweight">BW</span><span class="unit"></span>';
+    }
+    html += '<input class="in in-reps" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder=""' +
+      ' value="' + esc(s.reps === null || s.reps === undefined ? '' : s.reps) + '" data-key="' + esc(key) + '" data-field="reps" aria-label="' + label + ' ' + esc(unit) + '">' +
+      '<span class="unit">' + esc(unit) + '</span>' +
+      '<button type="button" class="done" data-key="' + esc(key) + '" aria-pressed="' + (s.done ? 'true' : 'false') + '" aria-label="' + label + ' done">✓</button>' +
+      '</div>';
+  }
+  return html + '</div>';
+}
+
+function checkLine(row, draft) {
+  const on = !!draft.checks[row.exercise];
+  return '<div class="exercise check-line' + (on ? ' is-done' : '') + '">' +
+    '<button type="button" class="done" data-check="' + esc(row.exercise) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(row.exercise) + ' done">✓</button>' +
+    '<span class="check-text"><span class="ex-name">' + esc(row.exercise) + '</span>' +
+    '<span class="ex-target">' + esc(row.target) + '</span>' +
+    (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') + '</span></div>';
+}
+
+// ---- History ------------------------------------------------------------------------
+function historyView() {
+  if (!state.sessions.length) return '<p class="empty">No workouts logged yet. The first one will show up here.</p>';
+  const pending = queuedSessionIds();
+  const items = state.sessions.slice(0, 60).map(s => {
+    const m = dayMeta(s.day_id);
+    const status = isTrue(s.completed) ? 'Completed' : 'Not finished';
+    const local = pending.has(s.client_id) ? ' · not synced yet' : '';
+    return '<a class="row" href="#session/' + encodeURIComponent(s.client_id) + '">' +
+      '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + '<br>' +
+      '<span class="muted small">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' + status + local + '</span></span>' +
+      '<span class="chev">›</span></a>';
+  }).join('');
+  return '<section class="list">' + items + '</section>';
+}
+
+// ---- Session detail -----------------------------------------------------------------
+function sessionView(id) {
+  const s = state.sessions.find(x => x.client_id === id);
+  if (!s) return '<p class="empty">Couldn\'t find that session.</p>';
+  const m = dayMeta(s.day_id);
+  return '<section class="session">' +
+    '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
+    '<p class="day-sub">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' +
+    (isTrue(s.completed) ? 'Completed' : 'Not finished') +
+    (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + '</p>' +
+    '<div id="session-sets"><p class="muted">Loading sets…</p></div></section>';
+}
+
+async function loadSessionSets(route, s) {
+  let note = '';
+  let serverRows = [];
+  if (apiConfigured()) {
+    try {
+      const res = await apiGet({ action: 'sets', date: s.date, day_id: s.day_id });
+      if (res && res.ok) serverRows = res.rows || [];
+      else if (/unknown action/.test(String(res && res.error))) note = 'Update the script to the latest Code.gs to see set details.';
+      else note = 'Couldn\'t load the sets from the sheet right now.';
+    } catch (e) {
+      note = 'Couldn\'t load the sets from the sheet right now.';
+    }
+  }
+  if (state.route !== route) return;                 // user moved on
+  const localRows = queuedSetRows(r => r.date === s.date && r.day_id === s.day_id);
+  const box = document.getElementById('session-sets');
+  if (box) box.innerHTML = renderSessionSets(s, serverRows.concat(localRows), note);
+}
+
+function setText(s, row, unit) {
+  const w = (s.weight === '' || s.weight === null || s.weight === undefined) ? null : Number(s.weight);
+  const r = (s.reps === '' || s.reps === null || s.reps === undefined) ? null : s.reps;
+  if (w === null && r === null) return 'done';
+  const parts = [];
+  if (w !== null) parts.push(fmtNum(w) + ' lb');
+  else if (!row || !row.log_weight) parts.push('BW');
+  if (r !== null) parts.push((typeof r === 'number' ? fmtNum(r) : String(r)) + ' ' + unit);
+  return parts.join(' × ');
+}
+
+function renderSessionSets(session, rows, note) {
+  const latest = new Map();                                   // "exercise|set" → row; later rows win
+  rows.forEach(r => latest.set(setKey(r.exercise, Number(r.set_number) || 1), r));
+  const phase = Number(session.phase) || phaseForWeek(Number(session.week) || 1);
+  const order = [];
+  workoutFor(phase, session.day_id).blocks.forEach(b => b.exercises.forEach(e => order.push(e)));
+  const byExercise = new Map();
+  latest.forEach(r => {
+    if (!byExercise.has(r.exercise)) byExercise.set(r.exercise, []);
+    byExercise.get(r.exercise).push(r);
+  });
+  const names = order.map(e => e.exercise).filter(n => byExercise.has(n))
+    .concat([...byExercise.keys()].filter(n => !order.some(e => e.exercise === n)));
+  if (!names.length) return '<p class="muted">' + esc(note || 'No sets were logged for this session.') + '</p>';
+  let html = names.map(n => {
+    const row = order.find(e => e.exercise === n);
+    const unit = unitLabel(row ? row.unit : 'reps');
+    const sets = byExercise.get(n).sort((a, b) => Number(a.set_number) - Number(b.set_number));
+    return '<div class="card"><h3>' + esc(n) + '</h3>' + sets.map(s =>
+      '<div class="set-line"><span>Set ' + esc(s.set_number) + '</span><span>' + esc(setText(s, row, unit)) + '</span>' +
+      '<span class="tick">' + (isTrue(s.done) ? '✓' : '') + '</span></div>').join('') + '</div>';
+  }).join('');
+  if (note) html += '<p class="muted small">' + esc(note) + '</p>';
+  return html;
+}
+
+// ---- Exercise history ---------------------------------------------------------------
+function exerciseView(name) {
+  return '<section class="exercise-history"><h2 class="day-title">' + esc(name) + '</h2>' +
+    '<p class="day-sub">Last 10 sessions, newest first</p>' +
+    '<div id="exercise-rows"><p class="muted">Loading…</p></div></section>';
+}
+
+async function loadExerciseHistory(route, name) {
+  let note = '';
+  let server = [];
+  if (apiConfigured()) {
+    try {
+      const res = await apiGet({ action: 'history', exercise: name, limit: 80 });
+      if (res && res.ok) server = res.rows || [];
+      else note = 'Couldn\'t load history from the sheet right now.';
+    } catch (e) {
+      note = 'Couldn\'t load history from the sheet right now.';
+    }
+  }
+  if (state.route !== route) return;
+  const local = queuedSetRows(r => r.exercise === name).reverse();      // newest first, like the API
+  const box = document.getElementById('exercise-rows');
+  if (box) box.innerHTML = renderExerciseRows(name, local.concat(server), note);
+}
+
+function renderExerciseRows(name, rows, note) {
+  const byDate = new Map();                                   // date → Map(set_number → newest row)
+  rows.forEach(r => {
+    const d = String(r.date || '').slice(0, 10);
+    if (!byDate.has(d)) byDate.set(d, new Map());
+    const m = byDate.get(d);
+    const n = Number(r.set_number) || 1;
+    if (!m.has(n)) m.set(n, r);                               // rows arrive newest first
+  });
+  const dates = [...byDate.keys()].sort().reverse().slice(0, 10);
+  if (!dates.length) return '<p class="muted">' + esc(note || 'No history yet for this exercise.') + '</p>';
+  const row = state.program.find(r => r.exercise === name) || null;
+  let html = '<div class="card">' + dates.map(d => {
+    const sets = [...byDate.get(d).values()].sort((a, b) => Number(a.set_number) - Number(b.set_number));
+    return '<div class="set-line"><span>' + esc(fmtDateLong(d)) + '<br><span class="muted small">Week ' + esc(sets[0].week || '?') + '</span></span>' +
+      '<span>' + esc(setsSummary(sets, row)) + '</span></div>';
+  }).join('') + '</div>';
+  if (note) html += '<p class="muted small">' + esc(note) + '</p>';
+  return html;
+}
+
+// ---- Settings -----------------------------------------------------------------------
+function settingsView() {
+  const q = state.queueCount;
+  const bad = readQueue().find(i => i.lastError);
+  const programText = state.programSource === 'fallback'
+    ? 'Showing the built-in copy of the program (the sheet has not answered yet).'
+    : 'Program from the sheet' + (state.programUpdatedAt ? ', last refreshed ' + fmtDateLong(state.programUpdatedAt) + ' ' + fmtTime(state.programUpdatedAt) : '') + '.';
+  return '<section class="settings">' +
+    '<div class="card"><h3>Connection</h3><p id="conn-status" class="muted">' +
+    (apiConfigured() ? 'Checking…' : 'Not configured — put the script URL and token in web/config.js.') + '</p>' +
+    '<button type="button" class="btn ghost" data-action="ping"' + (apiConfigured() ? '' : ' disabled') + '>Test connection</button></div>' +
+    '<div class="card"><h3>Sync</h3><p class="muted">' +
+    (q ? q + ' save' + (q === 1 ? '' : 's') + ' waiting to sync.' + (bad ? ' Last problem: ' + esc(friendlyError(bad.lastError)) + '.' : '')
+       : 'Everything is saved to the sheet.') + '</p>' +
+    '<button type="button" class="btn ghost" data-action="retry-sync"' + (q ? '' : ' disabled') + '>Retry queued saves (' + q + ')</button></div>' +
+    '<div class="card"><h3>Program</h3><p class="muted">' + esc(programText) + '</p>' +
+    '<button type="button" class="btn ghost" data-action="reload-program"' + (apiConfigured() ? '' : ' disabled') + '>Reload from the sheet</button></div>' +
+    '<p class="muted small" style="text-align:center">Shelby\'s Workouts · app v' + APP_VERSION + '</p>' +
+    '</section>';
+}
+
+async function pingAndShow(route) {
+  const el = document.getElementById('conn-status');
+  if (!el || !apiConfigured()) return;
+  el.textContent = 'Checking…';
+  const t0 = performance.now();
+  try {
+    const res = await apiGet({ action: 'ping' });
+    if (state.route !== route) return;
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    el.textContent = res && res.ok ? 'Connected · ' + secs + ' s' : 'The script answered but ' + friendlyError(res && res.error) + '.';
+  } catch (e) {
+    if (state.route !== route) return;
+    el.textContent = 'Can\'t reach the script right now.';
+  }
+}
+
+// ------------------------------------------------------------------------------- 8. routing & events
+function parseHash() {
+  const h = (location.hash || '#').slice(1).replace(/^\/+/, '');
+  const slash = h.indexOf('/');
+  const name = slash < 0 ? h : h.slice(0, slash);
+  const arg = slash < 0 ? '' : h.slice(slash + 1);
+  switch (name) {
+    case 'workout': return { name: 'workout', dayId: DAY_ORDER.includes(arg) ? arg : 'day1' };
+    case 'history': return { name: 'history' };
+    case 'session': return { name: 'session', id: safeDecode(arg) };
+    case 'exercise': return { name: 'exercise', exercise: safeDecode(arg) };
+    case 'settings': return { name: 'settings' };
+    default: return { name: 'home' };
+  }
+}
+function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
+
+function renderTopbar(route) {
+  const left = document.getElementById('topbar-left');
+  const title = document.getElementById('topbar-title');
+  const right = document.getElementById('topbar-right');
+  const back = (href, label) => '<a class="topbar-btn" href="' + href + '">‹ ' + label + '</a>';
+  const historyLink = '<a class="topbar-btn" href="#history">History</a>';
+  const settingsLink = '<a class="topbar-btn" href="#settings" aria-label="Settings">⚙︎</a>';
+  switch (route.name) {
+    case 'workout':
+      left.innerHTML = back('#', 'Home'); title.textContent = weekLabel(); right.innerHTML = historyLink; break;
+    case 'history':
+      left.innerHTML = back('#', 'Home'); title.textContent = 'History'; right.innerHTML = ''; break;
+    case 'session':
+      left.innerHTML = back('#history', 'History'); title.textContent = 'Session'; right.innerHTML = ''; break;
+    case 'exercise': {
+      const from = state.prevHash && state.prevHash.startsWith('#workout/') ? state.prevHash : '#';
+      left.innerHTML = back(from, 'Back'); title.textContent = 'Exercise'; right.innerHTML = ''; break;
+    }
+    case 'settings':
+      left.innerHTML = back('#', 'Home'); title.textContent = 'Settings'; right.innerHTML = ''; break;
+    default:
+      left.innerHTML = ''; title.textContent = 'Shelby\'s Workouts'; right.innerHTML = historyLink + settingsLink;
+  }
+}
+
+function render() {
+  const route = parseHash();
+  state.route = route;
+  if (route.name !== 'workout') current = null;
+  document.body.dataset.view = route.name;
+  const view = document.getElementById('view');
+  switch (route.name) {
+    case 'workout': view.innerHTML = workoutView(route.dayId); break;
+    case 'history': view.innerHTML = historyView(); break;
+    case 'session': {
+      view.innerHTML = sessionView(route.id);
+      const s = state.sessions.find(x => x.client_id === route.id);
+      if (s) loadSessionSets(route, s);
+      break;
+    }
+    case 'exercise': view.innerHTML = exerciseView(route.exercise); loadExerciseHistory(route, route.exercise); break;
+    case 'settings': view.innerHTML = settingsView(); pingAndShow(route); break;
+    default: view.innerHTML = homeView();
+  }
+  renderTopbar(route);
+  window.scrollTo(0, 0);
+}
+
+function rerenderIfPassive() {
+  if (state.route.name === 'home' || state.route.name === 'history') render();
+}
+
+function setSaveStatus(text) {
+  const el = document.getElementById('save-status');
+  if (el) el.textContent = text;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function parseWeight(value) {
+  const v = String(value).trim().replace(',', '.');
+  if (v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+function parseReps(value) {
+  const v = String(value).trim();
+  if (v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? v : n;
+}
+
+async function onSave(finish) {
+  if (!current) return;
+  const { draft, workout } = current;
+  if (finish) {
+    const anyDone = Object.values(draft.sets).some(s => s.done) || Object.values(draft.checks).some(Boolean);
+    if (!anyDone && !window.confirm('No sets are marked done yet. Finish this workout anyway?')) return;
+  }
+  const result = saveWorkout(draft, workout, finish);
+  if (finish) {
+    showToast(result.setsQueued || result.sessionQueued ? 'Saved — nice work!' : 'Already saved');
+    location.hash = '#';                                   // Home shows the new next-up right away
+    flushQueue().then(rerenderIfPassive);
+    return;
+  }
+  if (!result.setsQueued) { setSaveStatus(state.queueCount ? initialSaveStatus(draft) : 'Nothing new to save'); return; }
+  setSaveStatus('Saving…');
+  await flushQueue();
+  if (!current || current.draft !== draft) return;         // moved to another view meanwhile
+  if (!state.queueCount) setSaveStatus('Saved to the sheet ✓ ' + fmtTime(new Date().toISOString()));
+  else if (!apiConfigured()) setSaveStatus('Saved on this phone (sheet not connected yet)');
+  else setSaveStatus('Saved on this phone — will sync when online');
+}
+
+async function handleAction(action, btn) {
+  switch (action) {
+    case 'save': onSave(false); break;
+    case 'finish': onSave(true); break;
+    case 'week-minus': setWeek(state.week - 1); render(); break;
+    case 'week-plus': setWeek(state.week + 1); render(); break;
+    case 'accept-week':
+      setWeek(Number(btn.dataset.week));
+      lsSet(LS.dismissedSuggest, btn.dataset.sid);
+      render();
+      break;
+    case 'dismiss-week':
+      lsSet(LS.dismissedSuggest, btn.dataset.sid);
+      render();
+      break;
+    case 'retry-sync':
+      showToast('Syncing…');
+      await flushQueue();
+      showToast(state.queueCount ? 'Still ' + state.queueCount + ' waiting — will try again later' : 'All synced ✓');
+      render();
+      break;
+    case 'reload-program':
+      showToast('Reloading…');
+      if (await refreshBootstrap()) { showToast('Program reloaded ✓'); render(); }
+      else showToast('Couldn\'t reach the sheet right now');
+      break;
+    case 'ping': pingAndShow(state.route); break;
+    default: break;
+  }
+}
+
+function bindViewEvents() {
+  const view = document.getElementById('view');
+
+  view.addEventListener('input', e => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement) || !el.dataset.key || !current) return;
+    const s = current.draft.sets[el.dataset.key];
+    if (!s) return;
+    if (el.dataset.field === 'weight') s.weight = parseWeight(el.value);
+    else s.reps = parseReps(el.value);
+    s.touched = true;
+    markStarted(current.draft);
+    scheduleDraftSave();
+  });
+
+  view.addEventListener('keydown', e => {                   // Return → next field, like a form
+    if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement)) return;
+    e.preventDefault();
+    const inputs = [...view.querySelectorAll('input.in')];
+    const i = inputs.indexOf(e.target);
+    if (i >= 0 && inputs[i + 1]) inputs[i + 1].focus(); else e.target.blur();
+  });
+
+  view.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.classList.contains('done') && current) {
+      if (btn.dataset.key) {
+        const s = current.draft.sets[btn.dataset.key];
+        if (!s) return;
+        s.done = !s.done;
+        btn.setAttribute('aria-pressed', s.done ? 'true' : 'false');
+        const row = btn.closest('.set-row');
+        if (row) row.classList.toggle('is-done', s.done);
+      } else if (btn.dataset.check) {
+        const on = !current.draft.checks[btn.dataset.check];
+        current.draft.checks[btn.dataset.check] = on;
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const line = btn.closest('.check-line');
+        if (line) line.classList.toggle('is-done', on);
+      }
+      markStarted(current.draft);
+      scheduleDraftSave();
+      return;
+    }
+    if (btn.dataset.action) { e.preventDefault(); handleAction(btn.dataset.action, btn); }
+  });
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (location.protocol !== 'https:' && !local) return;
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('service worker not registered', e));
+}
+
+async function boot() {
+  registerServiceWorker();
+  await loadProgramJson();
+  const cached = lsGet(LS.bootstrap, null);
+  if (cached) applyBootstrap(cached, 'cache');
+  if (!state.program.length && state.programJson) {
+    state.program = flattenProgramJson(state.programJson);
+    state.programSource = 'fallback';
+  }
+  replayQueueIntoState();
+  initWeek();
+  state.queueCount = readQueue().length;
+  bindViewEvents();
+  render();
+
+  window.addEventListener('hashchange', e => {
+    try { state.prevHash = new URL(e.oldURL).hash; } catch (err) { state.prevHash = ''; }
+    render();
+  });
+  window.addEventListener('online', () => { flushQueue().then(rerenderIfPassive); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    flushQueue().then(rerenderIfPassive);
+    if (isStale()) refreshBootstrap().then(ok => { if (ok) rerenderIfPassive(); });
+  });
+
+  if (!state.program.length) {
+    document.getElementById('view').innerHTML =
+      '<p class="empty">Couldn\'t load the program. Check the connection and reopen the app.</p>';
+  }
+  const ok = await refreshBootstrap();
+  if (ok) {
+    if (lsGet(LS.week, null) === null) initWeek();
+    if (state.route.name !== 'workout' || !current) render(); else renderTopbar(state.route);
+  }
+  flushQueue().then(rerenderIfPassive);
+}
+
+boot();

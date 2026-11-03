@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Shelby's Workouts</title>
+  <meta name="description" content="Shelby's workout tracker">
+  <meta name="theme-color" content="#0f766e">
+  <!-- iPhone: full-screen app from Add to Home Screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Workouts">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <!-- Bump ?v= on both files when deploying a change, or Safari keeps the old copy for days -->
+  <link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body data-view="home">
+  <header class="topbar">
+    <div id="topbar-left" class="topbar-left"></div>
+    <h1 id="topbar-title">Shelby's Workouts</h1>
+    <div id="topbar-right" class="topbar-right"></div>
+  </header>
+
+  <main id="view">
+    <p class="muted">Loading…</p>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <noscript><p class="empty">This app needs JavaScript turned on.</p></noscript>
+  <script type="module" src="app.js?v=1"></script>
+</body>
+</html>

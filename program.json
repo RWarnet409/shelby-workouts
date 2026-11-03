@@ -1,0 +1,1720 @@
+{
+  "name": "Shelby's Workout Plan — 6-Week Restart",
+  "generated_from": "reference/build_plan.py (same source as reference/Shelby_Workout_Plan_v2.xlsx)",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Rebuild",
+      "weeks": [
+        1,
+        2
+      ],
+      "superset_sets": 2,
+      "main_sets": 3,
+      "circuit_rounds": 2,
+      "abs_rounds": 2,
+      "banner": "Phase 1 · Rebuild (Weeks 1–2) — 2 sets per superset, 2 rounds per circuit. Go light: finish every set feeling like you had 3–4 reps left. The goal this phase is showing up 3–4 times, not soreness."
+    },
+    {
+      "phase": 2,
+      "name": "Build",
+      "weeks": [
+        3,
+        4
+      ],
+      "superset_sets": 3,
+      "main_sets": 4,
+      "circuit_rounds": 3,
+      "abs_rounds": 3,
+      "banner": "Phase 2 · Build (Weeks 3–4) — 3 sets per superset, 3 rounds per circuit. The last 2 reps of each set should be hard. Lunges and Russian twists get weight. Hit the top of the rep range on every set → go up next time."
+    },
+    {
+      "phase": 3,
+      "name": "Push",
+      "weeks": [
+        5,
+        6
+      ],
+      "superset_sets": 3,
+      "main_sets": 4,
+      "circuit_rounds": 3,
+      "abs_rounds": 3,
+      "banner": "Phase 3 · Push (Weeks 5–6) — main lifts drop to 8–10 reps at a heavier weight, Superset 1 on upper days gets a 4th set, harder variations swap in. After Week 6: one light week, then restart at Week 3."
+    }
+  ],
+  "week_notes": {
+    "1": "Week 1: pick weights on the easy side and write them all down — this week is for finding your numbers.",
+    "2": "Week 2: same plan as Week 1. Add 1 rep per set or a touch of weight where Week 1 felt easy.",
+    "3": "Week 3: sets go up to 3. Use the Week 2 weights and go up only where you hit the top of the range every set.",
+    "4": "Week 4: same as Week 3 — go up anywhere you hit the top of the range last week.",
+    "5": "Week 5: reps drop, weight goes up on the main lifts. Expect to add 5 lb or one pin on those.",
+    "6": "Week 6: last push — match or beat Week 5 on every lift, then take a light week before starting over at Week 3."
+  },
+  "days": [
+    {
+      "day_id": "day1",
+      "day_label": "Day 1",
+      "weekday": "Monday",
+      "focus": "Back, Arms, Abs",
+      "minutes": 35
+    },
+    {
+      "day_id": "day2",
+      "day_label": "Day 2",
+      "weekday": "Tuesday",
+      "focus": "Legs & Glutes",
+      "minutes": 40
+    },
+    {
+      "day_id": "day3",
+      "day_label": "Day 3",
+      "weekday": "Thursday",
+      "focus": "Chest, Shoulders, Arms, Abs",
+      "minutes": 35
+    },
+    {
+      "day_id": "day4",
+      "day_label": "Day 4",
+      "weekday": "Friday or Saturday",
+      "focus": "Legs, Glutes, Abs (circuits)",
+      "minutes": 30
+    }
+  ],
+  "rest_days": [
+    "Wednesday",
+    "Sunday"
+  ],
+  "rest_day_note": "Rest day — walk Blu.",
+  "rules": [
+    "Log every weight. Top of the rep range on every set with clean form → go up next session (dumbbells +2.5–5 lb, machines +1 pin). Can't reach the bottom of the range → drop back one.",
+    "Supersets: A then B, rest 45–60 sec, repeat. Circuits: all four back to back, rest 60–90 sec, repeat.",
+    "Warm up every time: 5 easy minutes of cardio, then one light set before the first working set. Stretch 3–5 min after.",
+    "Missed a day? Slide, don't skip. Days 1 and 2 are the priority; Day 4 is the first to drop. Three days is a win, two is fine, zero is the only bad week.",
+    "Don't rush the phases: move on only after two weeks with at least three sessions each. If a week falls apart, repeat it.",
+    "After Week 6: one light week (Week 1 sets and weights), then restart at Week 3 with the Week 6 weights.",
+    "Blu's walks are the cardio. Rest days are walk days, not gym days.",
+    "Form over weight, always. If something hurts (not burns), stop that exercise and swap in the bodyweight version."
+  ],
+  "workouts": [
+    {
+      "phase": 1,
+      "day_id": "day1",
+      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Hammer Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Low Row Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Shoulder Press (DB/machine)",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cable Straight-Arm Pulldown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Cable Tricep Pushdown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (2 rounds)",
+          "block_type": "abs",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Plank",
+              "target": "30–45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dead Bug",
+              "target": "10/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Mountain Climbers",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "day_id": "day2",
+      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "BW Squats + Glute Bridges",
+              "target": "10 each",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Main Lift (3 sets)",
+          "block_type": "main",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Goblet Squat",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 1 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Romanian Deadlift",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Sumo Squat",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 2 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Reverse Lunges",
+              "target": "10/leg",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Leg Curl Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (2 rounds)",
+          "block_type": "abs",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Bicycle Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Leg Raises",
+              "target": "10–15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "day_id": "day3",
+      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Chest Press Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Lateral Raises",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Biceps Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (2 sets)",
+          "block_type": "superset",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Triceps Kickbacks",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Bent-Over Rear Delt Fly",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (2 rounds)",
+          "block_type": "abs",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Ab Machine",
+              "target": "15–20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Side Plank (each side)",
+              "target": "20–30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "day_id": "day4",
+      "cooldown": "Cool-down: 3–5 min stretch",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Circuit 1 (2 rounds)",
+          "block_type": "circuit",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Sumo Deadlift",
+              "target": "10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Walking or Reverse Lunges",
+              "target": "10/leg",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Tuck Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Circuit 2 (2 rounds)",
+          "block_type": "circuit",
+          "sets": 2,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Floor Glute Bridge",
+              "target": "15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Bodyweight Squats",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Leg Raises",
+              "target": "15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Finisher (optional)",
+          "block_type": "finisher",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Spin Bike or Incline Walk",
+              "target": "10 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "day_id": "day1",
+      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Hammer Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Low Row Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Shoulder Press (DB/machine)",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cable Straight-Arm Pulldown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Cable Tricep Pushdown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Plank",
+              "target": "30–45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dead Bug",
+              "target": "10/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Mountain Climbers",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "day_id": "day2",
+      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "BW Squats + Glute Bridges",
+              "target": "10 each",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Main Lift (4 sets)",
+          "block_type": "main",
+          "sets": 4,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Goblet Squat",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 1 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Romanian Deadlift",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Sumo Squat",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Reverse Lunges",
+              "target": "10/leg",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Leg Curl Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Bicycle Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists (med ball)",
+              "target": "20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Leg Raises",
+              "target": "10–15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "day_id": "day3",
+      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Chest Press Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Lateral Raises",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Biceps Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Triceps Kickbacks",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Bent-Over Rear Delt Fly",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Ab Machine",
+              "target": "15–20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Side Plank (each side)",
+              "target": "20–30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "day_id": "day4",
+      "cooldown": "Cool-down: 3–5 min stretch",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Circuit 1 (3 rounds)",
+          "block_type": "circuit",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Sumo Deadlift",
+              "target": "10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Walking/Reverse Lunges (DB)",
+              "target": "10/leg",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Tuck Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Circuit 2 (3 rounds)",
+          "block_type": "circuit",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Glute Bridge (DB on hips)",
+              "target": "15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists (med ball)",
+              "target": "20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Bodyweight Squats",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Leg Raises",
+              "target": "15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Finisher (optional)",
+          "block_type": "finisher",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Spin Bike or Incline Walk",
+              "target": "10 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "day_id": "day1",
+      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (4 sets)",
+          "block_type": "superset",
+          "sets": 4,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Hammer Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Low Row Machine",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Shoulder Press (DB/machine)",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cable Straight-Arm Pulldown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Cable Tricep Pushdown",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Plank",
+              "target": "45–60 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dead Bug",
+              "target": "10/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Mountain Climbers",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "day_id": "day2",
+      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "BW Squats + Glute Bridges",
+              "target": "10 each",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Main Lift (4 sets)",
+          "block_type": "main",
+          "sets": 4,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Pause Goblet Squat (2 sec)",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 1 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Romanian Deadlift",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Sumo Squat",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Reverse Lunges",
+              "target": "10/leg",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Leg Curl Machine",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Bicycle Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists (med ball)",
+              "target": "20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Leg Raises",
+              "target": "15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "day_id": "day3",
+      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Superset 1 (4 sets)",
+          "block_type": "superset",
+          "sets": 4,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Chest Press Machine",
+              "target": "8–10",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Lateral Raises",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Superset 2 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Lat Pulldown Machine",
+              "target": "10–12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Dumbbell Biceps Curls",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Superset 3 (3 sets)",
+          "block_type": "superset",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Triceps Kickbacks",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Bent-Over Rear Delt Fly",
+              "target": "12–15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Abs Circuit (3 rounds)",
+          "block_type": "abs",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Ab Machine",
+              "target": "15–20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Side Plank (each side)",
+              "target": "40 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "day_id": "day4",
+      "cooldown": "Cool-down: 3–5 min stretch",
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Warmup — easy pace",
+          "block_type": "warmup",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Treadmill / Elliptical / Bike",
+              "target": "5 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 2,
+          "block": "Circuit 1 (3 rounds)",
+          "block_type": "circuit",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Dumbbell Sumo Deadlift",
+              "target": "12",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Plank Shoulder Taps",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Walking/Reverse Lunges (DB)",
+              "target": "10/leg",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Tuck Crunches",
+              "target": "20",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 3,
+          "block": "Circuit 2 (3 rounds)",
+          "block_type": "circuit",
+          "sets": 3,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Single-Leg Glute Bridge",
+              "target": "10/leg",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Russian Twists (med ball)",
+              "target": "20",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Goblet Squats",
+              "target": "15",
+              "log_weight": true,
+              "bodyweight": false,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Leg Raises",
+              "target": "15",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 4,
+          "block": "Finisher (optional)",
+          "block_type": "finisher",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Spin Bike or Incline Walk",
+              "target": "10–12 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

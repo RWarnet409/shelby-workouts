@@ -212,8 +212,12 @@ details.banner p { margin: 8px 0 2px; }
 .ex-target { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .ex-history, .ex-video { font-size: 13px; margin-left: 6px; padding: 14px 6px; white-space: nowrap; }   /* padding = a 44px tall tap target without changing the line */
 .ex-video { font-weight: 600; }
-.ex-sub { padding-left: 8px; font-size: 13px; line-height: 1.2; }  /* "history · swap · ☆ favorite" under the name, indented */
-.ex-sub .ex-history { margin-left: 0; }
+/* "history · swap · ☆ favorite" under the name: three columns, so history is flush left, swap is
+   centred on the row and favorite is flush right, whichever of the three are present. */
+.ex-sub { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; font-size: 13px; line-height: 1.2; }
+.ex-sub .ex-history { grid-column: 1; justify-self: start; margin-left: 0; padding-left: 0; }
+.ex-sub .ex-swap { grid-column: 2; justify-self: center; margin: 0; }
+.ex-sub .ex-fav { grid-column: 3; justify-self: end; margin: 0; padding-right: 0; }
 .ex-link, .ex-fav {                                        /* link-styled buttons on the history line */
   border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600;
   color: var(--accent); padding: 14px 6px; margin-left: 4px; white-space: nowrap;

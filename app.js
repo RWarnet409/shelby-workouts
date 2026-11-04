@@ -12,12 +12,14 @@
 
 import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
+import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '10';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '11';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
+const AUTOSAVE_MS = 3000;                      // a change in the workout is sent to the sheet this long after the last tap
 const LS = {
   bootstrap: 'swa.bootstrap',                  // { program, last, sessions, fetchedAt } — last good API answer
   programJson: 'swa.programJson',              // copy of program.json (phase banners, week notes, cool-downs)
@@ -25,6 +27,8 @@ const LS = {
   queue: 'swa.queue',                          // unsent POSTs: [{ id, action, sets | session, createdAt }]
   dismissedSuggest: 'swa.dismissedSuggest',    // client_id of the session whose "next week?" banner was dismissed
   draftPrefix: 'swa.draft.',                   // + day_id → the workout in progress for that day
+  stale: 'swa.stale',                          // drafts from another day that were started but never finished
+  summary: 'swa.summary',                      // what the last Finish did (sets, minutes, weights that went up) until dismissed
 };
 
 // ------------------------------------------------------------------------------- 2. storage
@@ -191,6 +195,11 @@ function videoLink(name) {
     ' aria-label="How to do ' + esc(name) + ' (opens YouTube)">▶ how to</a>';
 }
 
+// Day-one hint for the weight box ("15–20", "5", "pin"), from starting.js. Shown as the placeholder
+// until the exercise has a logged weight.
+const START_LOOKUP = new Map(Object.entries(START_WEIGHTS).map(([k, v]) => [videoKey(k), v]));
+function startWeightHint(name) { return START_LOOKUP.get(videoKey(name)) || ''; }
+
 function unitLabel(unit) {
   return unit === 'time' ? 'sec' : unit === 'minutes' ? 'min' : 'reps';
 }
@@ -252,10 +261,21 @@ function swapOptions(slotName, workout) {
   };
 }
 
+// The last session of an exercise *before* `date`. While today's sets are being saved in the
+// background, state.last already holds today's numbers; the previous session is kept in `prev`
+// (applySetsToLast / applyBootstrap), so "last time", the nudge and the pre-fill keep pointing at
+// the session before this one. No `prev` yet (fresh server answer mid-workout) → nothing to show.
+function lastBefore(name, date) {
+  const le = state.last[name];
+  if (!le) return null;
+  if (date && le.date === date) return le.prev || null;
+  return le;
+}
+
 // Progression nudge (SPEC §5.2): last time every done set reached the top of the range → suggest more.
-function nudgeFor(row) {
+function nudgeFor(row, date) {
   if (!row.log_weight) return null;
-  const le = state.last[row.exercise];
+  const le = lastBefore(row.exercise, date);
   if (!le || !Array.isArray(le.sets) || !le.sets.length) return null;
   const t = parseTarget(row.target);
   if (t.max === null || t.min === t.max) return null;          // no range to be at the top of
@@ -281,18 +301,19 @@ function setsSummary(sets, row) {
   return sets.map((s, i) => (ws[i] === null ? 'BW' : fmtNum(ws[i])) + '×' + rs[i]).join(', ');
 }
 
-function lastTimeText(row) {
-  const le = state.last[row.exercise];
+function lastTimeText(row, date) {
+  const le = lastBefore(row.exercise, date);
   if (!le) return '';
   const sets = (le.sets || []).slice().sort((a, b) => a.set_number - b.set_number);
-  if (sets.length) return setsSummary(sets, row) + (le.date ? ' · ' + fmtDate(le.date) : '');
+  if (sets.length) return setsSummary(sets, row);
   if (le.weight !== null && le.weight !== undefined) return fmtNum(le.weight) + ' lb';
   return '';
 }
 
 // Default values for a set before Shelby touches it: last time's numbers, else the target's low end.
-function prefill(row, setNo) {
-  const le = state.last[row.exercise];
+// They show faint until she edits the field or ticks the set; ticking logs them as they are.
+function prefill(row, setNo, date) {
+  const le = lastBefore(row.exercise, date);
   const t = parseTarget(row.target);
   let weight = null;
   let reps = null;
@@ -331,11 +352,25 @@ function applyBootstrap(b, source) {
     state.program = b.program;
     state.programSource = source;
   }
-  if (b.last && typeof b.last === 'object') state.last = b.last;
+  if (b.last && typeof b.last === 'object') state.last = mergeLast(b.last);
   if (Array.isArray(b.sessions)) state.sessions = b.sessions;
   if (Array.isArray(b.exercises)) state.exercises = b.exercises;   // absent from the old script → keep what we have
   if (Array.isArray(b.favorites)) state.favorites = b.favorites;
   if (b.fetchedAt) state.programUpdatedAt = b.fetchedAt;
+}
+
+// A fresh `last` from the sheet only knows the latest session per exercise. Keep the session before
+// it (from what this phone already had) as `prev`, so a refresh mid-workout doesn't turn "last time"
+// into today's half-finished numbers.
+function mergeLast(fresh) {
+  Object.keys(fresh).forEach(k => {
+    const now = fresh[k];
+    const old = state.last[k];
+    if (!old || !now || !now.date || !old.date) return;
+    if (old.date < now.date) now.prev = { date: old.date, weight: old.weight, reps: old.reps, sets: old.sets || [] };
+    else if (old.date === now.date && old.prev) now.prev = old.prev;
+  });
+  return fresh;
 }
 
 function persistBootstrapCache() {
@@ -409,8 +444,11 @@ function queuedSetRows(match) {
 function applySetsToLast(sets) {
   sets.forEach(s => {
     const e = state.last[s.exercise] || (state.last[s.exercise] = { date: null, weight: null, reps: null, sets: [] });
+    if (e.date !== s.date) {                                   // a new session: remember the one before it
+      if (e.date) e.prev = { date: e.date, weight: e.weight, reps: e.reps, sets: e.sets || [] };
+      e.date = s.date; e.sets = [];
+    }
     if (s.weight !== null && s.weight !== undefined) e.weight = s.weight;
-    if (e.date !== s.date) { e.date = s.date; e.sets = []; }
     if (s.reps !== null && s.reps !== undefined && s.reps !== '') e.reps = s.reps;
     const rec = { set_number: s.set_number, weight: s.weight, reps: s.reps, done: !!s.done };
     const i = e.sets.findIndex(x => Number(x.set_number) === s.set_number);
@@ -550,47 +588,119 @@ function setKey(exercise, n) { return exercise + '|' + n; }
 function loadDraft(dayId, phase) {
   const today = todayIso();
   const d = lsGet(draftKey(dayId), null);
-  if (d && d.date === today && d.phase === phase) {
+  if (d && d.date === today) {
+    d.phase = phase;                          // the week was changed mid-day: keep what she has typed
     if (!d.swaps) d.swaps = {};               // drafts from before swaps existed
+    if (!d.collapsed) d.collapsed = {};       // drafts from before collapsing existed
     if (d.timerStartedAt === undefined) {     // drafts from before the timer existed
       d.timerStartedAt = null; d.timerPausedAt = null; d.timerPausedMs = 0; d.timerStoppedAt = null;
     }
     if (d.timerEnded === undefined) d.timerEnded = false;
     return d;
   }
+  if (d) shelveDraft(d);                      // another day's workout: keep it until she decides (Home asks)
   return {
-    dayId, date: today, phase,
+    dayId, date: today, phase, week: state.week,
     createdAt: new Date().toISOString(),
     startedAt: null,                          // first tap/typing; fallback for duration_min when the timer wasn't used
+    lastActivityAt: null,                     // last tap/typing; where an abandoned workout's time stops
     timerStartedAt: null,                     // the workout timer (local ISO with offset); survives closing the app
     timerPausedAt: null,                      // set while paused (End is a pause that looks final)
     timerPausedMs: 0,                         // total time spent paused, not counted in the elapsed time
     timerEnded: false,                        // she tapped End: show the time as final, offer Start again
-    timerStoppedAt: null,                     // set by Save & finish — the only thing that really ends it
-    sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig }
+    timerStoppedAt: null,                     // set by Finish — the only thing that really ends it
+    sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig, prevWeight }
     checks: {},                               // warmup / finisher lines → true when ticked
     checksSent: {},
     swaps: {},                                // Program exercise → the library exercise done instead, today only
+    collapsed: {},                            // exercise → true when she folded its set rows away
     note: '',                                 // the Notes box at the bottom of the page
-    completed: false,                         // true once Save & finish has been tapped
-    durationMin: null,                        // minutes from the first tap to Save & finish
+    completed: false,                         // true once Finish has been tapped
+    durationMin: null,                        // minutes from the first tap to Finish
     sessionClientId: uuid(),
     sentSessionSig: null,                     // "completed|note" as last queued; a change re-sends the row
   };
 }
 function saveDraft(d) { lsSet(draftKey(d.dayId), d); }
 
+// Anything typed or ticked? (decides whether an old draft is worth asking about)
+function draftHasActivity(d) {
+  if (!d) return false;
+  return Object.values(d.sets || {}).some(s => s.done || s.touched) ||
+    Object.values(d.checks || {}).some(Boolean) ||
+    String(d.note || '').trim() !== '' || !!d.timerStartedAt;
+}
+
+// Sets ticked done out of the sets in the workout (set rows only; the warm-up and finisher lines
+// don't count, so an optional finisher never blocks "that's everything").
+function setProgress(draft, workout) {
+  let done = 0;
+  let total = 0;
+  workout.blocks.forEach(b => {
+    const n = b.sets === null ? 0 : Number(b.sets);
+    if (n <= 0) return;
+    b.exercises.forEach(row => {
+      for (let i = 1; i <= n; i++) {
+        total++;
+        const s = draft.sets[setKey(row.exercise, i)];
+        if (s && s.done) done++;
+      }
+    });
+  });
+  return { done, total };
+}
+function exerciseProgress(draft, row, n) {
+  let done = 0;
+  for (let i = 1; i <= n; i++) { const s = draft.sets[setKey(row.exercise, i)]; if (s && s.done) done++; }
+  return { done, total: n };
+}
+
+// ---- abandoned drafts ---------------------------------------------------------------
+// A workout from another day that was started but never finished is moved aside (not thrown away)
+// the next time that day is opened. Home then asks: finish it (the sets land in the sheet and the
+// session counts) or discard it.
+function staleDrafts() { return lsGet(LS.stale, []); }
+function shelveDraft(d) {
+  if (d.completed || !draftHasActivity(d)) return;
+  const list = staleDrafts().filter(x => x.sessionClientId !== d.sessionClientId);
+  list.push(d);
+  lsSet(LS.stale, list);
+}
+function dropStaleDraft(sessionId) {
+  lsSet(LS.stale, staleDrafts().filter(x => x.sessionClientId !== sessionId));
+}
+// Every day's draft is checked, not just the day being opened, so Home can ask right away.
+function shelveOldDrafts() {
+  const today = todayIso();
+  DAY_ORDER.forEach(dayId => {
+    const d = lsGet(draftKey(dayId), null);
+    if (d && d.date !== today) { shelveDraft(d); lsRemove(draftKey(dayId)); }
+  });
+}
+// The draft for today that has something in it and isn't finished — what the Continue card shows.
+function inProgressDraft() {
+  const today = todayIso();
+  for (const dayId of DAY_ORDER) {
+    const d = lsGet(draftKey(dayId), null);
+    if (d && d.date === today && !d.completed && draftHasActivity(d)) return d;
+  }
+  return null;
+}
+
 let draftSaveTimer = null;
 function scheduleDraftSave() {
+  if (current) current.draft.lastActivityAt = new Date().toISOString();
   clearTimeout(draftSaveTimer);
   draftSaveTimer = setTimeout(() => { if (current) saveDraft(current.draft); }, 250);
+  scheduleAutosave();
 }
 
 function getSetEntry(draft, row, n) {
   const k = setKey(row.exercise, n);
   if (!draft.sets[k]) {
-    const p = prefill(row, n);
-    draft.sets[k] = { exercise: row.exercise, set_number: n, weight: p.weight, reps: p.reps, done: false, touched: false, sentSig: null };
+    const p = prefill(row, n, draft.date);
+    draft.sets[k] = { exercise: row.exercise, set_number: n, weight: p.weight, reps: p.reps, done: false, touched: false, sentSig: null,
+      prevWeight: p.weight };                 // last time's weight, kept for the "went up" line on Finish
   }
   return draft.sets[k];
 }
@@ -600,9 +710,9 @@ function markStarted(draft) {
 }
 
 // Rows to send: sets that are done or were edited, and only when they changed since the last save.
-function collectSetsToSend(draft, workout) {
+function collectSetsToSend(draft, workout, week) {
   const out = [];
-  const base = { date: draft.date, week: state.week, phase: draft.phase, day_id: draft.dayId, note: '' };
+  const base = { date: draft.date, week: week || state.week, phase: draft.phase, day_id: draft.dayId, note: '' };
   workout.blocks.forEach(b => {
     const n = b.sets === null ? 0 : Number(b.sets);
     b.exercises.forEach(row => {
@@ -626,12 +736,14 @@ function collectSetsToSend(draft, workout) {
 }
 
 // Minutes for Sessions.duration_min: the timer when it was used, else first tap → finish (5–180 min).
-function durationMinutes(draft) {
+// `endMs` is when the workout ended: now, or the last tap for a workout finished after the fact.
+function durationMinutes(draft, endMs) {
   if (draft.timerStartedAt && draft.timerStoppedAt) {
     return Math.max(1, Math.round(timerElapsedMs(draft) / 60000));
   }
   if (!draft.startedAt) return null;
-  const mins = Math.round((Date.now() - new Date(draft.startedAt).getTime()) / 60000);
+  const end = endMs || Date.now();
+  const mins = Math.round((end - new Date(draft.startedAt).getTime()) / 60000);
   return mins >= 5 && mins <= 180 ? mins : null;
 }
 
@@ -710,7 +822,7 @@ function timerCard(draft) {
   } else if (ended || final) {
     actions = '<button type="button" class="btn small ghost" data-action="timer-resume">▶ Start again</button>' +
       '<button type="button" class="ex-link" data-action="timer-reset">reset</button>';
-    if (ended && !draft.completed) hint = '<p class="timer-hint">Save &amp; finish logs the time.</p>';
+    if (ended && !draft.completed) hint = '<p class="timer-hint">Finish workout logs the time.</p>';
   } else {
     actions = '<button type="button" class="btn small primary" data-action="timer-start">▶ Start</button>';
   }
@@ -739,29 +851,36 @@ function refreshTimerCard() {
 }
 
 // Queue the set rows and the session row, and update "last time" on this phone right away.
+// Runs in the background a few seconds after every change, and once more on Finish (`finish`).
 // The session row (completed flag, note, duration) goes out whenever it changed. The script updates
 // the existing row for the same client_id, so a note added after finishing still lands.
-function saveWorkout(draft, workout, finish) {
-  const sets = collectSetsToSend(draft, workout);
+// `opts.week` / `opts.endedAt` / `opts.persist` are for finishing an abandoned draft from Home.
+function saveWorkout(draft, workout, finish, opts = {}) {
+  const week = opts.week || state.week;
+  const endedAt = opts.endedAt ? new Date(opts.endedAt) : new Date();
+  const sets = collectSetsToSend(draft, workout, week);
   if (sets.length) {
     enqueue({ action: 'logSets', sets });
     applySetsToLast(sets);
   }
-  if (finish) timerFinish(draft, new Date());             // Save & finish is what really ends the timer
+  if (finish) {
+    if (opts.endedAt && timerRunning(draft)) draft.timerPausedAt = localIso(endedAt);   // abandoned with the clock running
+    timerFinish(draft, endedAt);                           // Finish is what really ends the timer
+  }
   if (finish && !draft.completed) {
     draft.completed = true;
     lsRemove(LS.dismissedSuggest);
   }
-  if (draft.completed || (draft.timerStartedAt && draft.timerStoppedAt)) draft.durationMin = durationMinutes(draft);
+  if (draft.completed || (draft.timerStartedAt && draft.timerStoppedAt)) draft.durationMin = durationMinutes(draft, endedAt.getTime());
   const note = String(draft.note || '').trim();
   const timerUsed = !!draft.timerStartedAt;
   const hasActivity = sets.length > 0 || note !== '' || draft.completed || timerUsed ||
     Object.values(draft.sets).some(s => s.sentSig) || Object.keys(draft.checksSent || {}).length > 0;
-  const sessionSig = [draft.completed ? 1 : 0, note, draft.timerStartedAt || '', draft.timerStoppedAt || ''].join('|');
+  const sessionSig = [draft.completed ? 1 : 0, note, draft.timerStartedAt || '', draft.timerStoppedAt || '', week].join('|');
   let sessionQueued = false;
   if (hasActivity && sessionSig !== (draft.sentSessionSig || null)) {
     const session = {
-      client_id: draft.sessionClientId, date: draft.date, week: state.week, phase: draft.phase,
+      client_id: draft.sessionClientId, date: draft.date, week, phase: draft.phase,
       day_id: draft.dayId, completed: !!draft.completed, duration_min: draft.durationMin || null, note,
       timer_start: draft.timerStartedAt || '', timer_end: draft.timerStoppedAt || '',
     };
@@ -771,11 +890,55 @@ function saveWorkout(draft, workout, finish) {
       .concat(state.sessions.filter(s => s.client_id !== session.client_id));
     sessionQueued = true;
   }
-  draft.week = state.week;
+  draft.week = week;
   draft.lastSavedAt = new Date().toISOString();
-  saveDraft(draft);
+  if (opts.persist !== false) saveDraft(draft);
   persistBootstrapCache();
   return { setsQueued: sets.length, sessionQueued };
+}
+
+// What Finish did, for the card on Home: minutes, sets, and every weight that beat last time.
+function finishSummary(draft, workout) {
+  const p = setProgress(draft, workout);
+  const ups = [];
+  workout.blocks.forEach(b => {
+    const n = b.sets === null ? 0 : Number(b.sets);
+    if (n <= 0) return;
+    b.exercises.forEach(row => {
+      if (!row.log_weight) return;
+      let best = null;
+      let prev = null;
+      for (let i = 1; i <= n; i++) {
+        const s = draft.sets[setKey(row.exercise, i)];
+        if (!s) continue;
+        if (s.done && s.weight !== null && s.weight !== undefined && (best === null || Number(s.weight) > best)) best = Number(s.weight);
+        if (s.prevWeight !== null && s.prevWeight !== undefined && (prev === null || Number(s.prevWeight) > prev)) prev = Number(s.prevWeight);
+      }
+      if (best !== null && prev !== null && best > prev) ups.push({ exercise: row.exercise, from: prev, to: best });
+    });
+  });
+  return { sessionId: draft.sessionClientId, dayId: draft.dayId, week: draft.week || state.week,
+    durationMin: draft.durationMin || null, done: p.done, total: p.total, ups };
+}
+
+// ---- background save ------------------------------------------------------------------
+// Every change (a tick, a weight, the note, a swap, the timer) is sent AUTOSAVE_MS after the last
+// one; leaving the page or hiding the app sends at once. Nothing waits for a Save button any more.
+let autosaveTimer = null;
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(autosaveNow, AUTOSAVE_MS);
+}
+async function autosaveNow() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  if (!current) return;
+  const { draft, workout } = current;
+  const r = saveWorkout(draft, workout, false);
+  if (!r.setsQueued && !r.sessionQueued) { refreshSaveStatus(); return; }
+  setSaveStatus(saveStatusText(draft, workout, 'saving…'));
+  await flushQueue();
+  refreshSaveStatus();
 }
 
 // ------------------------------------------------------------------------------- 7. views
@@ -788,17 +951,15 @@ function fmtNum(n) {
   const x = Number(n);
   return isNaN(x) ? String(n) : String(Math.round(x * 100) / 100);
 }
-function parseIsoDate(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
-}
-function fmtDate(iso) {
-  const d = parseIsoDate(iso);
-  return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : String(iso || '');
-}
-function fmtDateLong(iso) {
-  const d = parseIsoDate(iso);
-  return d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : String(iso || '');
+// "just now", "12 min ago", "3 hours ago", "2 days ago" — the app shows no dates or weekdays anywhere.
+function fmtAgo(iso) {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (isNaN(mins) || mins < 1) return 'just now';
+  if (mins < 60) return mins + ' min ago';
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours + ' hour' + (hours === 1 ? '' : 's') + ' ago';
+  const days = Math.round(hours / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
 }
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -840,17 +1001,27 @@ function homeView() {
   const restNote = (pj.rest_day_note || 'Rest day — walk Blu.').replace(/^Rest day\s*[—-]\s*/i, '');
 
   const doneIds = DAY_ORDER.filter(d => doneThisWeek(d));
-  const todoIds = DAY_ORDER.filter(d => d !== next && !doneThisWeek(d));
   const allDone = doneIds.length === DAY_ORDER.length;
+  const going = inProgressDraft();                       // today's half-done workout, if any
+  const bigId = going ? going.dayId : next;
+  const todoIds = DAY_ORDER.filter(d => d !== bigId && !doneThisWeek(d));
 
   const dayButton = (dayId, big) => {
     const m = dayMeta(dayId);
     const optional = dayId === 'day4' ? '<span class="tag">optional in a busy week</span>' : '';
+    if (big && going) {
+      const p = setProgress(going, effectiveWorkout(workoutFor(going.phase, going.dayId), going));
+      const meta = p.done + ' of ' + p.total + ' sets done' + (timerRunning(going) ? ' · timer running' : '');
+      return '<a class="next-up continue" href="#workout/' + dayId + '">' +
+        '<span class="eyebrow">Continue where you left off</span>' +
+        '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
+        '<span class="meta">' + esc(meta) + '</span></a>';
+    }
     if (big) {
       return '<a class="next-up" href="#workout/' + dayId + '">' +
         '<span class="eyebrow">' + (allDone ? 'Next week starts with' : 'Next up') + '</span>' +
         '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
-        '<span class="meta">~' + esc(m.minutes || '?') + ' min · ' + esc(m.weekday) + '</span>' + optional +
+        '<span class="meta">~' + esc(m.minutes || '?') + ' min</span>' + optional +
         '</a>';
     }
     return '<a class="day-btn" href="#workout/' + dayId + '">' +
@@ -861,16 +1032,21 @@ function homeView() {
 
   let html = '<section class="home">' +
     '<div class="week-row"><div class="week-label">' + esc(weekLabel()) + '</div>' +
-    '<div class="stepper"><button type="button" data-action="week-minus" aria-label="Previous week">−</button>' +
-    '<button type="button" data-action="week-plus" aria-label="Next week">+</button></div></div>';
+    '<div class="stepper-wrap"><span class="stepper-label" id="week-stepper-label">Change week</span>' +
+    '<div class="stepper" role="group" aria-labelledby="week-stepper-label">' +
+    '<button type="button" data-action="week-minus" aria-label="Previous week">−</button>' +
+    '<button type="button" data-action="week-plus" aria-label="Next week">+</button></div></div></div>';
   const wn = weekNote(state.week);
   if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
+  staleDrafts().forEach(d => { html += recoveryBanner(d); });
+  const summary = lsGet(LS.summary, null);
+  if (summary && !going) html += summaryCard(summary);
   if (sug) html += suggestBanner(sug);
-  html += dayButton(next, true);
+  html += dayButton(bigId, true);
   if (todoIds.length) {
-    html += '<p class="muted small" style="margin:14px 0 4px">Or pick another day — slide, don\'t skip:</p>';
+    html += '<p class="muted small" style="margin:14px 0 4px">' + (going ? 'Or pick another day:' : 'Or pick another day — slide, don\'t skip:') + '</p>';
     todoIds.forEach(d => { html += dayButton(d, false); });
-  } else if (allDone) {
+  } else if (allDone && !going) {
     html += '<p class="muted small" style="margin:14px 0 4px">All four days are done — rest up and start the next week when you\'re ready.</p>';
   }
   html += '<p class="rest-note">' + esc(rest) + ': rest — ' + esc(restNote) + '</p>';
@@ -901,12 +1077,44 @@ function doneSection(dayIds) {
   dayIds.forEach(d => {
     const s = doneThisWeek(d);
     const m = dayMeta(d);
-    const meta = [fmtDateLong(s.date), s.duration_min ? esc(s.duration_min) + ' min' : ''].filter(Boolean).join(' · ');
+    const meta = s.duration_min ? s.duration_min + ' min' : '';
     html += '<a class="day-btn day-done" href="#workout/' + d + '">' +
       '<span class="done-badge" aria-hidden="true">✓</span>' +
       '<span class="done-text"><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) +
-      '<br><span class="done-meta">' + esc(meta) + '</span></span></a>';
+      (meta ? '<br><span class="done-meta">' + esc(meta) + '</span>' : '') + '</span></a>';
   });
+  return html + '</section>';
+}
+
+// An unfinished workout from another day: finish it (its sets and session land in the sheet and
+// "Next up" moves on) or let it go.
+function recoveryBanner(d) {
+  const m = dayMeta(d.dayId);
+  const n = Object.values(d.sets || {}).filter(s => s.done).length;
+  const what = n ? n + ' set' + (n === 1 ? '' : 's') + ' on ' + m.day_label : 'a start on ' + m.day_label;
+  return '<div class="suggest recover"><span>You logged ' + esc(what) + ' but didn\'t finish it.</span>' +
+    '<span class="suggest-actions">' +
+    '<button type="button" class="btn small primary" data-action="recover-finish" data-sid="' + esc(d.sessionClientId) + '">Finish it</button>' +
+    '<button type="button" class="btn small ghost" data-action="recover-discard" data-sid="' + esc(d.sessionClientId) + '">Discard</button>' +
+    '</span></div>';
+}
+
+// The card after Finish: how long, how many sets, and which weights beat last time.
+function summaryCard(s) {
+  const m = dayMeta(s.dayId);
+  const bits = [];
+  if (s.durationMin) bits.push(s.durationMin + ' min');
+  if (s.total) bits.push(s.done + ' of ' + s.total + ' sets');
+  let html = '<section class="summary" aria-label="Last workout">' +
+    '<div class="summary-head"><h3>' + esc(m.day_label) + ' done — nice work!</h3>' +
+    '<button type="button" class="summary-close" data-action="dismiss-summary" aria-label="Dismiss">✕</button></div>' +
+    (bits.length ? '<p class="summary-meta">' + esc(bits.join(' · ')) + '</p>' : '');
+  if (s.ups && s.ups.length) {
+    html += '<p class="summary-ups"><strong>Went up:</strong> ' +
+      s.ups.map(u => esc(u.exercise) + ' ' + esc(fmtNum(u.from)) + ' → ' + esc(fmtNum(u.to)) + ' lb').join(', ') + '</p>';
+  } else if (s.total) {
+    html += '<p class="summary-ups muted">Same weights as last time — go up where every set hit the top of the range.</p>';
+  }
   return html + '</section>';
 }
 
@@ -922,8 +1130,7 @@ function workoutView(dayId) {
 
   let html = '<section class="workout">' +
     '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
-    '<p class="day-sub">' + esc(weekLabel()) + ' · ' + esc(fmtDateLong(draft.date)) +
-    (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>' +
+    '<p class="day-sub">' + esc(weekLabel()) + (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>' +
     timerCard(draft);
   if (timerRunning(draft)) startTick(); else stopTick();
   if (sug) html += suggestBanner(sug);
@@ -941,21 +1148,34 @@ function workoutView(dayId) {
   html += '<section class="card notes-card"><h3>Notes</h3>' +
     '<textarea id="day-note" class="notes" rows="3" placeholder="How did it go? Anything to remember next time?"' +
     ' aria-label="Notes for this workout">' + esc(draft.note || '') + '</textarea></section>';
+  const p = setProgress(draft, workout);
+  const allDone = p.total > 0 && p.done >= p.total;
   html += '</section>' +
-    '<div class="savebar"><div class="savebar-inner">' +
-    '<div id="save-status" class="save-status">' + esc(initialSaveStatus(draft)) + '</div>' +
-    '<div class="savebar-buttons">' +
-    '<button type="button" class="btn primary" data-action="save">Save workout</button>' +
-    '<button type="button" class="btn secondary" data-action="finish">Save &amp; finish</button>' +
-    '</div></div></div>';
+    '<div id="savebar" class="savebar' + (allDone ? ' all-done' : '') + '"><div class="savebar-inner">' +
+    '<div id="save-status" class="save-status">' + esc(saveStatusText(draft, workout)) + '</div>' +
+    '<button type="button" class="btn primary finish" data-action="finish">' + (draft.completed ? 'Finished ✓ · update' : 'Finish workout') + '</button>' +
+    '</div></div>';
   saveDraft(draft);                            // persist the entries prefill just created
   return html;
 }
 
-function initialSaveStatus(draft) {
-  if (state.queueCount) return state.queueCount + ' save' + (state.queueCount === 1 ? '' : 's') + ' waiting to sync';
-  if (draft.lastSavedAt) return 'Saved ✓ ' + fmtTime(draft.lastSavedAt);
-  return '';
+// The line above the Finish button: progress first, then where the data is.
+function saveStatusText(draft, workout, syncing) {
+  const p = setProgress(draft, workout);
+  if (!draft.completed && p.total > 0 && p.done >= p.total) return 'That\'s everything — finish workout?';
+  const base = (draft.completed ? 'Finished ✓ · ' : '') + p.done + ' of ' + p.total + ' sets done';
+  if (syncing) return base + ' · ' + syncing;
+  if (state.queueCount) return base + ' · ' + (apiConfigured() ? 'saved on this phone, will sync' : 'saved on this phone');
+  if (draft.lastSavedAt) return base + ' · saved ✓';
+  return base;
+}
+function refreshSaveStatus() {
+  if (!current) return;
+  const { draft, workout } = current;
+  setSaveStatus(saveStatusText(draft, workout));
+  const bar = document.getElementById('savebar');
+  const p = setProgress(draft, workout);
+  if (bar) bar.classList.toggle('all-done', !draft.completed && p.total > 0 && p.done >= p.total);
 }
 
 function blockCard(b, draft) {
@@ -975,12 +1195,23 @@ function targetText(row) {
   return (row.unit === 'reps' || !row.unit) && /^[\d–—-]+$/.test(t) ? t + ' reps' : t;
 }
 
+// "2 of 3 ✓" next to the fold button: green once every set of the exercise is ticked.
+function exerciseBadge(draft, row, n) {
+  const p = exerciseProgress(draft, row, n);
+  const all = p.total > 0 && p.done >= p.total;
+  return '<span class="ex-badge' + (all ? ' all' : '') + '" data-badge="' + esc(row.exercise) + '">' +
+    p.done + ' of ' + p.total + (all ? ' ✓' : '') + '</span>';
+}
+
 function exerciseSets(row, n, draft) {
   const unit = unitLabel(row.unit);
-  const last = lastTimeText(row);
-  const nudge = nudgeFor(row);
-  // Name with "▶ how to" right after it; "history" on its own line under the name; the rep target
-  // sits over the reps column in a header row that uses the same grid as the set rows.
+  const last = lastTimeText(row, draft.date);
+  const nudge = nudgeFor(row, draft.date);
+  const folded = !!(draft.collapsed && draft.collapsed[row.exercise]);
+  // Name with "▶ how to" right after it and a fold button at the end of the line; everything else
+  // (links, last time, the set rows) is in .ex-body, which the fold hides. "history" sits on its own
+  // line under the name; the rep target sits over the reps column in a header row that uses the
+  // same grid as the set rows.
   const slot = row.swapped_from || row.exercise;             // the Program exercise this row stands for
   let sub = '<a class="ex-history" href="#exercise/' + encodeURIComponent(row.exercise) + '">history</a>';
   if (hasLibrary()) {
@@ -990,8 +1221,13 @@ function exerciseSets(row, n, draft) {
     }
     sub += favButton(row.exercise);
   }
-  let html = '<div class="exercise">' +
-    '<div class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</div>' +
+  let html = '<div class="exercise' + (folded ? ' is-collapsed' : '') + '" data-exercise="' + esc(row.exercise) + '">' +
+    '<div class="ex-head"><span class="ex-title"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</span>' +
+    exerciseBadge(draft, row, n) +
+    '<button type="button" class="ex-toggle" data-action="toggle-ex" data-exercise="' + esc(row.exercise) + '"' +
+    ' aria-expanded="' + (folded ? 'false' : 'true') + '" aria-label="' + (folded ? 'Show' : 'Hide') + ' the sets for ' + esc(row.exercise) + '">' +
+    '<span class="ex-chev" aria-hidden="true">›</span></button></div>' +
+    '<div class="ex-body">' +
     '<div class="ex-sub">' + sub + '</div>';
   if (row.swapped_from) {
     html += '<div class="ex-swapped">in place of ' + esc(row.swapped_from) +
@@ -1006,26 +1242,43 @@ function exerciseSets(row, n, draft) {
     '<span class="unit head-unit">' + (row.log_weight ? 'lb' : '') + '</span>' +
     '<span class="ex-target">' + esc(targetText(row)) + '</span>' +
     '<span class="unit head-unit">' + esc(unit) + '</span><span></span></div>';
+  const hint = row.log_weight ? startWeightHint(row.exercise) : '';   // "15–20" / "pin" until there is history
   for (let i = 1; i <= n; i++) {
     const s = getSetEntry(draft, row, i);
     const key = setKey(row.exercise, i);
     const label = esc(row.exercise) + ' set ' + i;
+    const faint = !s.done && !s.touched ? ' in-hint' : '';         // suggested values look faint until she acts on them
     html += '<div class="set-row' + (s.done ? ' is-done' : '') + '" data-row="' + esc(key) + '">' +
       '<span class="set-label">Set ' + i + '</span>';
     if (row.log_weight) {
-      html += '<input class="in in-weight" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder=""' +
-        ' value="' + esc(fmtNum(s.weight)) + '" data-key="' + esc(key) + '" data-field="weight" aria-label="' + label + ' weight">' +
+      html += '<input class="in in-weight' + faint + '" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next"' +
+        ' placeholder="' + esc(hint) + '" value="' + esc(fmtNum(s.weight)) + '" data-key="' + esc(key) + '" data-field="weight" aria-label="' + label + ' weight">' +
         '<span class="unit">lb</span>';
     } else {
       html += '<span class="in in-bw" title="bodyweight">BW</span><span class="unit"></span>';
     }
-    html += '<input class="in in-reps" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder=""' +
+    html += '<input class="in in-reps' + faint + '" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder=""' +
       ' value="' + esc(s.reps === null || s.reps === undefined ? '' : s.reps) + '" data-key="' + esc(key) + '" data-field="reps" aria-label="' + label + ' ' + esc(unit) + '">' +
       '<span class="unit">' + esc(unit) + '</span>' +
       '<button type="button" class="done" data-key="' + esc(key) + '" aria-pressed="' + (s.done ? 'true' : 'false') + '" aria-label="' + label + ' done">✓</button>' +
       '</div>';
   }
-  return html + '</div>';
+  return html + '</div></div>';
+}
+
+// After a tick: redraw that exercise's "n of m" badge without re-rendering the page.
+function refreshExerciseBadge(exerciseName) {
+  if (!current) return;
+  const { draft, workout } = current;
+  const blocks = workout.blocks;
+  for (const b of blocks) {
+    const n = b.sets === null ? 0 : Number(b.sets);
+    const row = b.exercises.find(r => r.exercise === exerciseName);
+    if (!row || n <= 0) continue;
+    const old = document.querySelector('.ex-badge[data-badge="' + CSS.escape(exerciseName) + '"]');
+    if (old) old.outerHTML = exerciseBadge(draft, row, n);
+    return;
+  }
 }
 
 function checkLine(row, draft) {
@@ -1096,11 +1349,13 @@ function applySwap(slot, exercise) {
   if (!exercise || libKey(exercise) === libKey(slot)) delete draft.swaps[slot];
   else draft.swaps[slot] = exercise;
   markStarted(draft);
+  draft.lastActivityAt = new Date().toISOString();
   saveDraft(draft);
   closeSheet();
   const y = window.scrollY;
   render();
   window.scrollTo(0, y);
+  scheduleAutosave();
 }
 
 // ---- History ------------------------------------------------------------------------
@@ -1115,9 +1370,10 @@ function historyView() {
     const noteLine = noteText
       ? '<br><span class="small note-preview">' + esc(noteText.length > 90 ? noteText.slice(0, 90) + '…' : noteText) + '</span>'
       : '';
+    const mins = s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '';
     return '<a class="row" href="#session/' + encodeURIComponent(s.client_id) + '">' +
       '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + '<br>' +
-      '<span class="muted small">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' + status + local + '</span>' + noteLine + '</span>' +
+      '<span class="muted small">Week ' + esc(s.week) + ' · ' + status + mins + local + '</span>' + noteLine + '</span>' +
       '<span class="chev">›</span></a>';
   }).join('');
   return '<section class="list">' + items + '</section>';
@@ -1130,7 +1386,7 @@ function sessionView(id) {
   const m = dayMeta(s.day_id);
   return '<section class="session">' +
     '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
-    '<p class="day-sub">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' +
+    '<p class="day-sub">Week ' + esc(s.week) + ' · ' +
     (isTrue(s.completed) ? 'Completed' : 'Not finished') +
     (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + '</p>' +
     (s.timer_start ? '<p class="day-sub">Timer: ' + esc(fmtTime(s.timer_start)) +
@@ -1236,7 +1492,8 @@ function renderExerciseRows(name, rows, note) {
   const row = state.program.find(r => r.exercise === name) || null;
   let html = '<div class="card">' + dates.map(d => {
     const sets = [...byDate.get(d).values()].sort((a, b) => Number(a.set_number) - Number(b.set_number));
-    return '<div class="set-line"><span>' + esc(fmtDateLong(d)) + '<br><span class="muted small">Week ' + esc(sets[0].week || '?') + '</span></span>' +
+    const dayLabel = sets[0].day_id ? dayMeta(sets[0].day_id).day_label : '';
+    return '<div class="set-line"><span>Week ' + esc(sets[0].week || '?') + (dayLabel ? ' · ' + esc(dayLabel) : '') + '</span>' +
       '<span>' + esc(setsSummary(sets, row)) + '</span></div>';
   }).join('') + '</div>';
   if (note) html += '<p class="muted small">' + esc(note) + '</p>';
@@ -1249,7 +1506,7 @@ function settingsView() {
   const bad = readQueue().find(i => i.lastError);
   const programText = state.programSource === 'fallback'
     ? 'Showing the built-in copy of the program (the sheet has not answered yet).'
-    : 'Program from the sheet' + (state.programUpdatedAt ? ', last refreshed ' + fmtDateLong(state.programUpdatedAt) + ' ' + fmtTime(state.programUpdatedAt) : '') + '.';
+    : 'Program from the sheet' + (state.programUpdatedAt ? ', last refreshed ' + fmtAgo(state.programUpdatedAt) : '') + '.';
   const nFav = state.favorites.length;
   const libText = hasLibrary()
     ? state.exercises.length + ' exercises in the swap library · ' + nFav + ' favorite' + (nFav === 1 ? '' : 's') + '.'
@@ -1329,6 +1586,7 @@ function renderTopbar(route) {
 function render() {
   closeSheet();
   stopTick();                                   // the Workout view restarts it when its timer is running
+  if (current && autosaveTimer) autosaveNow();  // leaving a workout: send what is pending now, not in 3 s
   const route = parseHash();
   state.route = route;
   if (route.name !== 'workout') current = null;
@@ -1382,36 +1640,56 @@ function parseReps(value) {
   return isNaN(n) ? v : n;
 }
 
-async function onSave(finish) {
+// Finish: the one button. Marks the session completed, stops the timer, leaves a summary card on Home.
+function onFinish() {
   if (!current) return;
   const { draft, workout } = current;
+  const anyDone = Object.values(draft.sets).some(s => s.done) || Object.values(draft.checks).some(Boolean);
+  if (!anyDone && !window.confirm('No sets are marked done yet. Finish this workout anyway?')) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  saveWorkout(draft, workout, true);
+  lsSet(LS.summary, finishSummary(draft, workout));
+  showToast('Saved — nice work!');
+  location.hash = '#';                                     // Home shows the summary and the new next-up
+  flushQueue().then(rerenderIfPassive);
+}
+
+// Finish or drop a workout from another day that was never finished (the banner on Home).
+function recoverDraft(sessionId, finish) {
+  const d = staleDrafts().find(x => x.sessionClientId === sessionId);
+  if (!d) { dropStaleDraft(sessionId); render(); return; }
   if (finish) {
-    const anyDone = Object.values(draft.sets).some(s => s.done) || Object.values(draft.checks).some(Boolean);
-    if (!anyDone && !window.confirm('No sets are marked done yet. Finish this workout anyway?')) return;
+    const workout = effectiveWorkout(workoutFor(d.phase, d.dayId), d);
+    const endedAt = d.lastActivityAt || d.startedAt || d.createdAt;
+    saveWorkout(d, workout, true, { week: d.week || state.week, endedAt, persist: false });
+    showToast(dayMeta(d.dayId).day_label + ' marked finished');
   }
-  const result = saveWorkout(draft, workout, finish);
-  if (finish) {
-    showToast(result.setsQueued || result.sessionQueued ? 'Saved — nice work!' : 'Already saved');
-    location.hash = '#';                                   // Home shows the new next-up right away
-    flushQueue().then(rerenderIfPassive);
-    return;
-  }
-  if (!result.setsQueued && !result.sessionQueued) {
-    setSaveStatus(state.queueCount ? initialSaveStatus(draft) : 'Nothing new to save');
-    return;
-  }
-  setSaveStatus('Saving…');
-  await flushQueue();
-  if (!current || current.draft !== draft) return;         // moved to another view meanwhile
-  if (!state.queueCount) setSaveStatus('Saved to the sheet ✓ ' + fmtTime(new Date().toISOString()));
-  else if (!apiConfigured()) setSaveStatus('Saved on this phone (sheet not connected yet)');
-  else setSaveStatus('Saved on this phone — will sync when online');
+  dropStaleDraft(sessionId);
+  render();
+  flushQueue().then(rerenderIfPassive);
 }
 
 async function handleAction(action, btn) {
   switch (action) {
-    case 'save': onSave(false); break;
-    case 'finish': onSave(true); break;
+    case 'finish': onFinish(); break;
+    case 'recover-finish': recoverDraft(btn.dataset.sid, true); break;
+    case 'recover-discard': recoverDraft(btn.dataset.sid, false); break;
+    case 'dismiss-summary': lsRemove(LS.summary); render(); break;
+    case 'toggle-ex': {                         // fold / unfold one exercise's set rows
+      if (!current) break;
+      const name = btn.dataset.exercise;
+      const box = btn.closest('.exercise');
+      if (!box) break;
+      const folded = !box.classList.contains('is-collapsed');
+      box.classList.toggle('is-collapsed', folded);
+      btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+      btn.setAttribute('aria-label', (folded ? 'Show' : 'Hide') + ' the sets for ' + name);
+      if (!current.draft.collapsed) current.draft.collapsed = {};
+      if (folded) current.draft.collapsed[name] = true; else delete current.draft.collapsed[name];
+      saveDraft(current.draft);
+      break;
+    }
     case 'week-minus': setWeek(state.week - 1); render(); break;
     case 'week-plus': setWeek(state.week + 1); render(); break;
     case 'accept-week':
@@ -1443,20 +1721,20 @@ async function handleAction(action, btn) {
       current.draft.timerEnded = false;
       current.draft.timerStoppedAt = null;
       markStarted(current.draft);
-      saveDraft(current.draft);
+      scheduleDraftSave();
       refreshTimerCard();
       break;
     case 'timer-pause':                         // Pause: freeze the clock
     case 'timer-stop':                          // End: the same pause, shown as final, with "Start again"
       if (!current || !current.draft.timerStartedAt || current.draft.timerStoppedAt) break;
       timerPause(current.draft, new Date(), action === 'timer-stop');
-      saveDraft(current.draft);
+      scheduleDraftSave();
       refreshTimerCard();
       break;
     case 'timer-resume':                        // Resume / Start again
       if (!current || !current.draft.timerStartedAt) break;
       timerUnpause(current.draft, new Date());
-      saveDraft(current.draft);
+      scheduleDraftSave();
       refreshTimerCard();
       break;
     case 'timer-reset':
@@ -1467,7 +1745,7 @@ async function handleAction(action, btn) {
       current.draft.timerEnded = false;
       current.draft.timerStoppedAt = null;
       current.draft.durationMin = null;
-      saveDraft(current.draft);
+      scheduleDraftSave();
       refreshTimerCard();
       break;
     case 'swap': openSwapSheet(btn.dataset.slot); break;
@@ -1508,8 +1786,14 @@ function bindViewEvents() {
     if (el.dataset.field === 'weight') s.weight = parseWeight(el.value);
     else s.reps = parseReps(el.value);
     s.touched = true;
+    el.classList.remove('in-hint');                         // her number now, not a suggestion
     markStarted(current.draft);
     scheduleDraftSave();
+  });
+
+  view.addEventListener('focusin', e => {                   // tapping a field selects it: typing replaces, no backspacing
+    const el = e.target;
+    if (el instanceof HTMLInputElement && el.classList.contains('in')) setTimeout(() => el.select(), 0);
   });
 
   view.addEventListener('keydown', e => {                   // Return → next field, like a form
@@ -1530,7 +1814,12 @@ function bindViewEvents() {
         s.done = !s.done;
         btn.setAttribute('aria-pressed', s.done ? 'true' : 'false');
         const row = btn.closest('.set-row');
-        if (row) row.classList.toggle('is-done', s.done);
+        if (row) {
+          row.classList.toggle('is-done', s.done);
+          row.querySelectorAll('.in').forEach(i => i.classList.toggle('in-hint', !s.done && !s.touched));
+        }
+        refreshExerciseBadge(s.exercise);
+        refreshSaveStatus();                                // "6 of 14 sets done" / "That's everything"
       } else if (btn.dataset.check) {
         const on = !current.draft.checks[btn.dataset.check];
         current.draft.checks[btn.dataset.check] = on;
@@ -1567,6 +1856,7 @@ async function boot() {
   }
   replayQueueIntoState();
   initWeek();
+  shelveOldDrafts();                          // yesterday's unfinished workout → the "Finish it?" banner on Home
   state.queueCount = readQueue().length;
   bindViewEvents();
   render();
@@ -1577,10 +1867,14 @@ async function boot() {
   });
   window.addEventListener('online', () => { flushQueue().then(rerenderIfPassive); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') {           // phone locked or app switched: send now
+      if (current && autosaveTimer) autosaveNow();
+      return;
+    }
     flushQueue().then(rerenderIfPassive);
     if (isStale()) refreshBootstrap().then(ok => { if (ok) rerenderIfPassive(); });
   });
+  window.addEventListener('pagehide', () => { if (current && autosaveTimer) autosaveNow(); });
 
   if (!state.program.length) {
     document.getElementById('view').innerHTML =

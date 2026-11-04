@@ -102,7 +102,7 @@ main {
   margin: 0 auto;
   padding: 14px 16px calc(var(--safe-bottom) + 28px);
 }
-body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 150px); }
+body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 120px); }
 
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
@@ -134,6 +134,8 @@ body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 150px
 /* ---- home ------------------------------------------------------------ */
 .week-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .week-label { font-size: 19px; font-weight: 650; }
+.stepper-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.stepper-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .stepper { display: flex; gap: 8px; }
 .stepper button {
   width: var(--tap);
@@ -231,6 +233,25 @@ body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 150px
 }
 .suggest-actions { display: flex; gap: 8px; margin-left: auto; }
 .suggest-actions .btn { white-space: nowrap; }
+.suggest.recover { background: var(--warn-soft); }        /* "You logged 9 sets on Day 1 but didn't finish it" */
+
+/* ---- the card after Finish: minutes, sets, weights that went up ------------- */
+.summary {
+  margin: 12px 0;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius);
+  background: var(--done-soft);
+  color: var(--done-ink);
+}
+.summary-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.summary h3 { margin: 0; font-size: 18px; color: var(--done); }
+.summary-close {
+  flex: 0 0 auto; width: var(--tap); height: var(--tap); margin: -10px -12px -10px 0;
+  border: 0; background: none; color: var(--done-ink); font-size: 16px; opacity: 0.7;
+}
+.summary-meta { margin: 4px 0 0; font-size: 15px; font-weight: 600; }
+.summary-ups { margin: 6px 0 0; font-size: 14px; line-height: 1.4; }
+.summary-ups.muted { color: var(--done-ink); opacity: 0.75; }
 
 /* ---- workout --------------------------------------------------------- */
 .day-title { margin: 4px 0 2px; font-size: 24px; }
@@ -248,8 +269,24 @@ details.banner p { margin: 8px 0 2px; }
 
 .exercise { padding: 10px 0 4px; border-top: 1px solid var(--line); }
 .exercise:first-of-type { border-top: 0; }
-.ex-head { display: block; line-height: 1.35; }           /* inline flow: "▶ how to" follows the last word of the name */
+/* Name line: the name with "▶ how to" flowing after its last word, then the "n of m" badge and the
+   fold button pinned to the right. Folding hides .ex-body (links, last time, the set rows). */
+.ex-head { display: flex; align-items: center; gap: 6px; line-height: 1.35; }
+.ex-title { flex: 1 1 auto; min-width: 0; }
 .ex-name { font-weight: 600; }
+.ex-badge {
+  flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--muted);
+  padding: 2px 8px; border-radius: 999px; background: var(--bg); white-space: nowrap;
+}
+.ex-badge.all { color: var(--done-ink); background: var(--done-soft); }
+.ex-toggle {
+  flex: 0 0 auto; width: var(--tap); height: var(--tap); margin: -6px -10px -6px 0;
+  border: 0; background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;
+}
+.ex-chev { display: inline-block; font-size: 24px; line-height: 1; transform: rotate(90deg); transition: transform 0.15s; }
+.exercise.is-collapsed .ex-chev { transform: rotate(0deg); }
+.exercise.is-collapsed .ex-body { display: none; }
+.exercise.is-collapsed { padding-bottom: 10px; }
 .ex-target { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .ex-history, .ex-video { font-size: 13px; margin-left: 6px; padding: 14px 6px; white-space: nowrap; }   /* padding = a 44px tall tap target without changing the line */
 .ex-video { font-weight: 600; }
@@ -330,6 +367,8 @@ body.sheet-open { overflow: hidden; }
   text-align: center;
 }
 .in:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.in.in-hint { color: var(--muted); }                      /* last time's number, faint until she edits it or ticks the set */
+.in::placeholder { color: var(--muted); opacity: 0.8; }    /* the day-one hint: "15–20", "pin" */
 .in-bw {
   display: inline-flex;
   align-items: center;
@@ -368,7 +407,14 @@ body.sheet-open { overflow: hidden; }
 }
 .savebar-inner { max-width: 520px; margin: 0 auto; }
 .save-status { min-height: 18px; margin-bottom: 8px; font-size: 14px; color: var(--muted); text-align: center; }
-.savebar-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.savebar .btn.finish { width: 100%; }
+/* every set ticked: the status line asks, the button glows */
+.savebar.all-done .save-status { color: var(--done); font-weight: 600; }
+.savebar.all-done .btn.finish { animation: finish-glow 1.4s ease-in-out 3; }
+@keyframes finish-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 6px var(--accent-soft); }
+}
 
 /* ---- buttons --------------------------------------------------------- */
 .btn {
@@ -438,7 +484,7 @@ body.sheet-open { overflow: hidden; }
   transition: opacity 0.2s, transform 0.2s;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-body[data-view="workout"] #toast { bottom: calc(var(--safe-bottom) + 132px); }
+body[data-view="workout"] #toast { bottom: calc(var(--safe-bottom) + 104px); }
 
 /* ---- notes ----------------------------------------------------------- */
 .notes-card { padding-bottom: 14px; }

@@ -39,7 +39,8 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }   /* no double-tap-to-zoom: fast taps on ✓ stay taps */
+body, button, input, textarea, a { touch-action: manipulation; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

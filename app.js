@@ -14,7 +14,7 @@ import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '7';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '8';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long

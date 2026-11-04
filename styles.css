@@ -178,6 +178,19 @@ body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 150px
 .day-meta { font-size: 14px; color: var(--muted); white-space: nowrap; }
 .rest-note { margin: 16px 0 0; font-size: 14px; color: var(--muted); text-align: center; }
 
+/* ---- workout timer ----------------------------------------------------- */
+.timer-card { padding: 12px 14px; margin: 12px 0 8px; }
+.timer-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.timer-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.timer-time { font-size: 30px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.timer-card.running .timer-time { color: var(--accent); }
+.timer-card.paused .timer-time { color: var(--warn); }
+.timer-card.stopped .timer-time { color: var(--done); }
+.timer-actions { display: flex; align-items: center; gap: 6px; }
+.timer-actions .btn.small { min-width: 96px; }
+.btn.stop { border-color: var(--warn); color: var(--warn); }
+.timer-hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
 /* ---- done this week: green, checked off, a little celebratory ------------ */
 .done-week { margin-top: 22px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .done-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }

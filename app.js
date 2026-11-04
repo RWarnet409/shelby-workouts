@@ -14,7 +14,7 @@ import { API_URL, TOKEN } from './config.js';
 import { VIDEOS } from './videos.js';          // exercise → YouTube search phrase (the ▶ how-to links)
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '8';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '10';                       // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -552,12 +552,21 @@ function loadDraft(dayId, phase) {
   const d = lsGet(draftKey(dayId), null);
   if (d && d.date === today && d.phase === phase) {
     if (!d.swaps) d.swaps = {};               // drafts from before swaps existed
+    if (d.timerStartedAt === undefined) {     // drafts from before the timer existed
+      d.timerStartedAt = null; d.timerPausedAt = null; d.timerPausedMs = 0; d.timerStoppedAt = null;
+    }
+    if (d.timerEnded === undefined) d.timerEnded = false;
     return d;
   }
   return {
     dayId, date: today, phase,
     createdAt: new Date().toISOString(),
-    startedAt: null,                          // first tap/typing; used for duration_min
+    startedAt: null,                          // first tap/typing; fallback for duration_min when the timer wasn't used
+    timerStartedAt: null,                     // the workout timer (local ISO with offset); survives closing the app
+    timerPausedAt: null,                      // set while paused (End is a pause that looks final)
+    timerPausedMs: 0,                         // total time spent paused, not counted in the elapsed time
+    timerEnded: false,                        // she tapped End: show the time as final, offer Start again
+    timerStoppedAt: null,                     // set by Save & finish — the only thing that really ends it
     sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig }
     checks: {},                               // warmup / finisher lines → true when ticked
     checksSent: {},
@@ -616,10 +625,117 @@ function collectSetsToSend(draft, workout) {
   return out;
 }
 
+// Minutes for Sessions.duration_min: the timer when it was used, else first tap → finish (5–180 min).
 function durationMinutes(draft) {
+  if (draft.timerStartedAt && draft.timerStoppedAt) {
+    return Math.max(1, Math.round(timerElapsedMs(draft) / 60000));
+  }
   if (!draft.startedAt) return null;
   const mins = Math.round((Date.now() - new Date(draft.startedAt).getTime()) / 60000);
   return mins >= 5 && mins <= 180 ? mins : null;
+}
+
+// ---- workout timer -------------------------------------------------------------------
+// A stopwatch: Start when she begins, Pause / Resume as needed, End when she thinks she is done.
+// End is a pause that looks final and offers "Start again"; nothing is logged until Save & finish,
+// which stamps timer_end (at the last End/Pause if it is paused, else now) and sets duration_min.
+// Elapsed time leaves out the pauses.
+function timerElapsedMs(draft) {
+  if (!draft || !draft.timerStartedAt) return 0;
+  const endIso = draft.timerStoppedAt || draft.timerPausedAt;
+  const end = endIso ? new Date(endIso).getTime() : Date.now();
+  return Math.max(0, end - new Date(draft.timerStartedAt).getTime() - (draft.timerPausedMs || 0));
+}
+function timerRunning(draft) { return !!(draft && draft.timerStartedAt && !draft.timerStoppedAt && !draft.timerPausedAt); }
+function timerPaused(draft) { return !!(draft && draft.timerStartedAt && !draft.timerStoppedAt && draft.timerPausedAt); }
+function timerFinal(draft) { return !!(draft && draft.timerStartedAt && draft.timerStoppedAt); }
+
+function timerPause(draft, now, ended) {
+  if (timerRunning(draft)) draft.timerPausedAt = localIso(now);
+  draft.timerEnded = !!ended;
+}
+// Resume / Start again: the pause (or the time since Save & finish) is folded into the paused total,
+// so the clock carries on from where it was.
+function timerUnpause(draft, now) {
+  const since = draft.timerPausedAt || draft.timerStoppedAt;
+  if (since) draft.timerPausedMs = (draft.timerPausedMs || 0) + Math.max(0, now.getTime() - new Date(since).getTime());
+  draft.timerPausedAt = null;
+  draft.timerStoppedAt = null;
+  draft.timerEnded = false;
+  draft.durationMin = null;
+}
+// Save & finish: the real end. A paused/ended timer ends at the moment it was paused.
+function timerFinish(draft, now) {
+  if (!draft.timerStartedAt || draft.timerStoppedAt) return;
+  draft.timerStoppedAt = draft.timerPausedAt || localIso(now);
+  draft.timerPausedAt = null;
+  draft.timerEnded = false;
+}
+
+function fmtClock(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h ? h + ':' + mm + ':' + ss : mm + ':' + ss;
+}
+
+// "2026-11-03T18:12:05.321-05:00": local time with the phone's offset, readable in the Sheet.
+// Milliseconds are kept so the clock never appears to step back when it stops.
+function localIso(d) {
+  const p = n => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3, '0') +
+    sign + p(Math.floor(Math.abs(off) / 60)) + ':' + p(Math.abs(off) % 60);
+}
+
+function timerCard(draft) {
+  const running = timerRunning(draft);
+  const ended = timerPaused(draft) && !!draft.timerEnded;
+  const paused = timerPaused(draft) && !ended;
+  const final = timerFinal(draft);
+  const cls = running ? ' running' : paused ? ' paused' : (ended || final) ? ' stopped' : '';
+  const label = running ? 'Running' : paused ? 'Paused' : ended ? 'Ended' : final ? 'Workout time' : 'Workout timer';
+  const endBtn = '<button type="button" class="btn small stop" data-action="timer-stop">■ End</button>';
+  let actions;
+  let hint = '';
+  if (running) {
+    actions = '<button type="button" class="btn small ghost" data-action="timer-pause">❚❚ Pause</button>' + endBtn;
+  } else if (paused) {
+    actions = '<button type="button" class="btn small primary" data-action="timer-resume">▶ Resume</button>' + endBtn;
+  } else if (ended || final) {
+    actions = '<button type="button" class="btn small ghost" data-action="timer-resume">▶ Start again</button>' +
+      '<button type="button" class="ex-link" data-action="timer-reset">reset</button>';
+    if (ended && !draft.completed) hint = '<p class="timer-hint">Save &amp; finish logs the time.</p>';
+  } else {
+    actions = '<button type="button" class="btn small primary" data-action="timer-start">▶ Start</button>';
+  }
+  return '<div id="timer-card" class="card timer-card' + cls + '"><div class="timer-row">' +
+    '<div><div class="timer-label">' + label + '</div>' +
+    '<div class="timer-time" id="timer-time">' + fmtClock(timerElapsedMs(draft)) + '</div></div>' +
+    '<div class="timer-actions">' + actions + '</div></div>' + hint + '</div>';
+}
+
+let timerTick = null;
+function stopTick() { clearInterval(timerTick); timerTick = null; }
+function startTick() {
+  stopTick();
+  timerTick = setInterval(() => {
+    const el = document.getElementById('timer-time');
+    if (!el || !current) { stopTick(); return; }
+    el.textContent = fmtClock(timerElapsedMs(current.draft));
+  }, 1000);
+}
+// Redraw just the timer card (keeps the rest of the page, inputs and scroll position as they are).
+function refreshTimerCard() {
+  if (!current) return;
+  const old = document.getElementById('timer-card');
+  if (old) old.outerHTML = timerCard(current.draft);
+  if (timerRunning(current.draft)) startTick(); else stopTick();
 }
 
 // Queue the set rows and the session row, and update "last time" on this phone right away.
@@ -631,20 +747,23 @@ function saveWorkout(draft, workout, finish) {
     enqueue({ action: 'logSets', sets });
     applySetsToLast(sets);
   }
+  if (finish) timerFinish(draft, new Date());             // Save & finish is what really ends the timer
   if (finish && !draft.completed) {
     draft.completed = true;
-    draft.durationMin = durationMinutes(draft);
     lsRemove(LS.dismissedSuggest);
   }
+  if (draft.completed || (draft.timerStartedAt && draft.timerStoppedAt)) draft.durationMin = durationMinutes(draft);
   const note = String(draft.note || '').trim();
-  const hasActivity = sets.length > 0 || note !== '' || draft.completed ||
+  const timerUsed = !!draft.timerStartedAt;
+  const hasActivity = sets.length > 0 || note !== '' || draft.completed || timerUsed ||
     Object.values(draft.sets).some(s => s.sentSig) || Object.keys(draft.checksSent || {}).length > 0;
-  const sessionSig = (draft.completed ? 1 : 0) + '|' + note;
+  const sessionSig = [draft.completed ? 1 : 0, note, draft.timerStartedAt || '', draft.timerStoppedAt || ''].join('|');
   let sessionQueued = false;
   if (hasActivity && sessionSig !== (draft.sentSessionSig || null)) {
     const session = {
       client_id: draft.sessionClientId, date: draft.date, week: state.week, phase: draft.phase,
       day_id: draft.dayId, completed: !!draft.completed, duration_min: draft.durationMin || null, note,
+      timer_start: draft.timerStartedAt || '', timer_end: draft.timerStoppedAt || '',
     };
     enqueueSession(session);
     draft.sentSessionSig = sessionSig;
@@ -804,7 +923,9 @@ function workoutView(dayId) {
   let html = '<section class="workout">' +
     '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
     '<p class="day-sub">' + esc(weekLabel()) + ' · ' + esc(fmtDateLong(draft.date)) +
-    (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>';
+    (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>' +
+    timerCard(draft);
+  if (timerRunning(draft)) startTick(); else stopTick();
   if (sug) html += suggestBanner(sug);
   if (pi && pi.banner) {
     const head = pi.banner.split(' — ')[0];
@@ -1012,6 +1133,8 @@ function sessionView(id) {
     '<p class="day-sub">' + esc(fmtDateLong(s.date)) + ' · Week ' + esc(s.week) + ' · ' +
     (isTrue(s.completed) ? 'Completed' : 'Not finished') +
     (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + '</p>' +
+    (s.timer_start ? '<p class="day-sub">Timer: ' + esc(fmtTime(s.timer_start)) +
+      (s.timer_end ? ' – ' + esc(fmtTime(s.timer_end)) : ' (still running)') + '</p>' : '') +
     (String(s.note || '').trim() ? '<p class="session-note">' + esc(String(s.note).trim()) + '</p>' : '') +
     '<div id="session-sets"><p class="muted">Loading sets…</p></div></section>';
 }
@@ -1205,6 +1328,7 @@ function renderTopbar(route) {
 
 function render() {
   closeSheet();
+  stopTick();                                   // the Workout view restarts it when its timer is running
   const route = parseHash();
   state.route = route;
   if (route.name !== 'workout') current = null;
@@ -1311,6 +1435,41 @@ async function handleAction(action, btn) {
       else showToast('Couldn\'t reach the sheet right now');
       break;
     case 'ping': pingAndShow(state.route); break;
+    case 'timer-start':
+      if (!current) break;
+      current.draft.timerStartedAt = localIso(new Date());
+      current.draft.timerPausedAt = null;
+      current.draft.timerPausedMs = 0;
+      current.draft.timerEnded = false;
+      current.draft.timerStoppedAt = null;
+      markStarted(current.draft);
+      saveDraft(current.draft);
+      refreshTimerCard();
+      break;
+    case 'timer-pause':                         // Pause: freeze the clock
+    case 'timer-stop':                          // End: the same pause, shown as final, with "Start again"
+      if (!current || !current.draft.timerStartedAt || current.draft.timerStoppedAt) break;
+      timerPause(current.draft, new Date(), action === 'timer-stop');
+      saveDraft(current.draft);
+      refreshTimerCard();
+      break;
+    case 'timer-resume':                        // Resume / Start again
+      if (!current || !current.draft.timerStartedAt) break;
+      timerUnpause(current.draft, new Date());
+      saveDraft(current.draft);
+      refreshTimerCard();
+      break;
+    case 'timer-reset':
+      if (!current || !window.confirm('Reset the timer to 00:00?')) break;
+      current.draft.timerStartedAt = null;
+      current.draft.timerPausedAt = null;
+      current.draft.timerPausedMs = 0;
+      current.draft.timerEnded = false;
+      current.draft.timerStoppedAt = null;
+      current.draft.durationMin = null;
+      saveDraft(current.draft);
+      refreshTimerCard();
+      break;
     case 'swap': openSwapSheet(btn.dataset.slot); break;
     case 'pick-swap': applySwap(btn.dataset.slot, btn.dataset.exercise); break;
     case 'unswap': applySwap(btn.dataset.slot, null); break;

@@ -68,7 +68,9 @@ real `/exec` URL and token in `config.js` and it talks to the Sheet.
 - **Cardio lines** (the warm-up, the finisher, the Walk day): a machine dropdown (the Exercises tab's
   Cardio · Machine rows) and min / mi / kcal boxes. One Log row per line with the machine in
   `exercise`, the Program slot in `swapped_from` and the numbers in `minutes` / `distance_mi` /
-  `calories`. **Walk with Blu** (the dashed card on Home) is a repeatable day with `day_id` `walk`:
+  `calories`. **+ Add cardio** under the warm-up adds extra lines of the same shape (set 2, 3, … of
+  the machine, `note` `extra cardio`; a removed line that was already sent gets a not-done correction
+  row). **Walk with Blu** (the dashed card on Home) is a repeatable day with `day_id` `walk`:
   each Finish writes a session (minutes, miles) and the card is ready for the next walk.
 - **The ⏱ clock**: timed sets, stretch holds and cardio lines open a full-screen clock; End writes
   the elapsed time into the row and ticks it. The start time is in the draft, so a locked phone

@@ -15,7 +15,7 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '13';                      // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '14';                      // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const WALK_ID = 'walk';                        // "Walk with Blu": a repeatable day outside the 1 → 4 cycle
 const ALL_DAY_IDS = DAY_ORDER.concat(WALK_ID);
@@ -662,7 +662,8 @@ function loadDraft(dayId, phase) {
     checks: {},                               // warmup / stretch lines → true when ticked (cardio lines mirror their ✓ here)
     checksSent: {},                           // exercise → the "done|seconds" signature last queued
     checkSecs: {},                            // check lines timed with the ⏱: exercise → seconds
-    cardio: {},                               // cardio lines: Program slot → { machine, minutes, distance, calories, done, touched, sentSig }
+    cardio: {},                               // cardio lines: Program slot → { machine, minutes, distance, calories, done, touched, sentSig };
+                                              //   extra lines ("+ Add cardio") sit here too, keyed "<slot>#2", "<slot>#3", … with baseSlot / setNumber
     setTimer: null,                           // the ⏱ clock while it runs: { kind, key | name | slot, label, sub, target, startedAt }
     swaps: {},                                // Program exercise → the library exercise done instead, today only
     collapsed: {},                            // exercise → true when she folded its set rows away
@@ -777,16 +778,58 @@ function getCardioEntry(draft, row, withMachine) {
   }
   return c;
 }
-function applyCardioPrefill(c, date) {
+// Last time's numbers for this line: the same set_number on that machine (1 = the Program line,
+// 2+ = an extra cardio line), so a 20-minute extra on the treadmill doesn't become the warm-up's
+// pre-fill. Set 1 falls back to the machine's latest numbers (rows from before set records had them).
+function cardioLastFor(c, date) {
   const le = lastBefore(c.machine, date);
+  if (!le) return null;
+  const n = c.setNumber || 1;
+  const rec = (le.sets || []).find(x => Number(x.set_number) === n);
+  if (rec && hasCardioNumbers(rec)) return rec;
+  return n === 1 ? le : null;
+}
+function applyCardioPrefill(c, date) {
+  const le = cardioLastFor(c, date);
   const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
   c.minutes = le ? num(le.minutes) : null;
   c.distance = le ? num(le.distance_mi) : null;
   c.calories = le ? num(le.calories) : null;
 }
+// The extra cardio lines under a Program cardio slot (the warm-up's "+ Add cardio"), in order.
+// `includeRemoved` adds the ones she took off again (they may still owe the Log a correction row).
+function extraCardio(draft, slot, includeRemoved) {
+  return Object.values(draft.cardio || {})
+    .filter(c => c.baseSlot === slot && (includeRemoved || !c.removed))
+    .sort((a, b) => (a.setNumber || 0) - (b.setNumber || 0));
+}
+// "+ Add cardio": one more line under the slot, logged as set 2, 3, … of the machine she picks.
+// A line removed earlier keeps its key and what was last sent, so adding again reuses it.
+function addExtraCardio(draft, slot) {
+  if (!draft.cardio) draft.cardio = {};
+  let n = 2;
+  while (draft.cardio[slot + '#' + n] && !draft.cardio[slot + '#' + n].removed) n++;
+  const key = slot + '#' + n;
+  const old = draft.cardio[key];
+  const c = draft.cardio[key] = { slot: key, baseSlot: slot, setNumber: n, machine: defaultMachine(key),
+    minutes: null, distance: null, calories: null, done: false, touched: false, sentSig: old ? old.sentSig : null, removed: false };
+  applyCardioPrefill(c, draft.date);
+  return c;
+}
+// Remove an extra line. Never sent → it just goes. Already in the Log → it stays in the draft as a
+// correction (not done, no numbers) for the next save, so the latest row per set wins as always.
+// Returns true when a correction needs sending.
+function removeExtraCardio(draft, key) {
+  const c = draft.cardio && draft.cardio[key];
+  if (!c) return false;
+  delete draft.checks[key];
+  if (!c.sentSig) { delete draft.cardio[key]; return false; }
+  c.removed = true; c.done = false; c.touched = false; c.minutes = null; c.distance = null; c.calories = null;
+  return true;
+}
 // The one cardio entry of a Walk draft (the "Walk with Blu" line), once it has been drawn.
 function walkEntry(draft) {
-  const list = Object.values(draft.cardio || {});
+  const list = Object.values(draft.cardio || {}).filter(c => !c.baseSlot && !c.removed);
   return list.length ? list[0] : null;
 }
 
@@ -811,14 +854,18 @@ function collectSetsToSend(draft, workout, week) {
           out.push({ ...base, client_id: uuid(), exercise: row.exercise, swapped_from: row.swapped_from || '',
             set_number: i, weight: row.log_weight ? s.weight : null, reps: s.reps, done: !!s.done });
         }
-      } else if (isCardioRow(row, b)) {                       // cardio line: the machine + minutes / miles / kcal
-        const c = draft.cardio && draft.cardio[row.exercise];
-        if (!c || !(c.done || c.touched)) return;
-        const sig = [c.machine, c.minutes ?? '', c.distance ?? '', c.calories ?? '', c.done ? 1 : 0].join('|');
-        if (c.sentSig === sig) return;
-        c.sentSig = sig;
-        out.push({ ...base, client_id: uuid(), exercise: c.machine, swapped_from: c.machine === row.exercise ? '' : row.exercise,
-          set_number: 1, weight: null, reps: null, minutes: c.minutes, distance_mi: c.distance, calories: c.calories, done: !!c.done });
+      } else if (isCardioRow(row, b)) {                       // cardio line(s): the machine + minutes / miles / kcal
+        const main = draft.cardio && draft.cardio[row.exercise];
+        (main ? [main] : []).concat(extraCardio(draft, row.exercise, true)).forEach(c => {
+          if (!(c.done || c.touched || c.removed)) return;
+          const sig = [c.machine, c.minutes ?? '', c.distance ?? '', c.calories ?? '', c.done ? 1 : 0].join('|');
+          if (c.sentSig === sig) return;
+          c.sentSig = sig;
+          const n = c.setNumber || 1;                              // 1 = the Program line, 2+ = "+ Add cardio"
+          out.push({ ...base, client_id: uuid(), exercise: c.machine, swapped_from: c.machine === row.exercise ? '' : row.exercise,
+            set_number: n, weight: null, reps: null, minutes: c.minutes, distance_mi: c.distance, calories: c.calories, done: !!c.done,
+            note: n > 1 ? 'extra cardio' : '' });
+        });
       } else if (draft.checks[row.exercise]) {                 // check line (warm-up move, stretch): once, and again when the ⏱ times it
         const secs = draft.checkSecs ? draft.checkSecs[row.exercise] : undefined;
         const sig = '1|' + (secs === null || secs === undefined ? '' : secs);
@@ -976,9 +1023,10 @@ function openSetTimer(kind, btn) {
     spec = { kind, name: row.exercise, label: row.exercise, sub: '', target: row.target };
   } else if (kind === 'cardio') {
     const c = draft.cardio && draft.cardio[btn.dataset.slot];
-    const row = rows.find(r => r.exercise === btn.dataset.slot);
+    const row = c && rows.find(r => r.exercise === (c.baseSlot || c.slot));
     if (!c || !row) return;
-    spec = { kind, slot: btn.dataset.slot, label: c.machine, sub: '', target: row.target };
+    const extra = (c.setNumber || 1) > 1;                   // an extra line has no target to turn green at
+    spec = { kind, slot: btn.dataset.slot, label: c.machine, sub: extra ? 'Extra cardio' : '', target: extra ? '' : row.target };
   }
   if (!spec) return;
   draft.setTimer = { ...spec, startedAt: localIso(new Date()) };
@@ -1442,7 +1490,13 @@ function blockCard(b, draft) {
   let html = '<section class="card block block-' + esc(b.block_type) + '"><h3>' + esc(b.block) + '</h3>' +
     (hint ? '<p class="hint">' + esc(hint) + '</p>' : '');
   b.exercises.forEach(row => {
-    html += n > 0 ? exerciseSets(row, n, draft) : isCardioRow(row, b) ? cardioLine(row, b, draft) : checkLine(row, b, draft);
+    if (n > 0) { html += exerciseSets(row, n, draft); return; }
+    if (!isCardioRow(row, b)) { html += checkLine(row, b, draft); return; }
+    html += cardioLine(row, b, draft);
+    if (b.block_type === 'warmup') {               // "+ Add cardio": optional extra lines under the warm-up slot
+      extraCardio(draft, row.exercise).forEach(c => { html += cardioLine(row, b, draft, c); });
+      html += '<button type="button" class="btn ghost small add-cardio" data-action="add-cardio" data-slot="' + esc(row.exercise) + '">+ Add cardio</button>';
+    }
   });
   return html + '</section>';
 }
@@ -1575,12 +1629,15 @@ function checkLine(row, block, draft) {
 
 // The cardio line (warm-up, finisher, walk): which machine, then minutes · miles · kcal, a ⏱ and a ✓.
 // Logged as one Log row with the machine in `exercise` and the Program slot in `swapped_from`.
-function cardioLine(row, block, draft) {
+// `extra` is one of the warm-up's "+ Add cardio" entries: same line, labelled "Extra cardio", with
+// a remove link instead of the target; it logs as set 2, 3, … of its machine.
+function cardioLine(row, block, draft, extra) {
   const withSelect = block.block_type !== 'walk';
-  const c = getCardioEntry(draft, row, withSelect);
-  const slot = row.exercise;
+  const c = extra || getCardioEntry(draft, row, withSelect);
+  const slot = c.slot || row.exercise;                      // the Program slot, or "<slot>#2" for an extra line
+  const isExtra = (c.setNumber || 1) > 1;
   const faint = !c.done && !c.touched ? ' in-hint' : '';
-  const le = lastBefore(c.machine, draft.date);
+  const le = cardioLastFor(c, draft.date);
   const last = le ? cardioSummary(le) : '';
   let head;
   if (withSelect) {
@@ -1595,13 +1652,15 @@ function cardioLine(row, block, draft) {
     '<label class="cardio-field"><input class="in in-cardio' + faint + '" type="text" inputmode="' + mode + '" autocomplete="off" enterkeyhint="next"' +
     ' value="' + esc(fmtNum(value)) + '" data-cardio-field="' + name + '" data-slot="' + esc(slot) + '" aria-label="' + esc(c.machine) + ' ' + label + '">' +
     '<span class="unit">' + unit + '</span></label>';
-  return '<div class="exercise cardio-line' + (c.done ? ' is-done' : '') + '" data-cardio="' + esc(slot) + '">' +
+  const history = '<a class="ex-history inline" href="#exercise/' + encodeURIComponent(c.machine) + '">history</a>';
+  const sub = isExtra
+    ? 'Extra cardio · ' + history + ' · <button type="button" class="ex-link inline" data-action="remove-cardio" data-slot="' + esc(slot) + '">remove</button>'
+    : esc(row.target) + (row.note ? ' · ' + esc(row.note) : '') + ' · ' + history;
+  return '<div class="exercise cardio-line' + (c.done ? ' is-done' : '') + (isExtra ? ' cardio-extra' : '') + '" data-cardio="' + esc(slot) + '">' +
     '<div class="cardio-head">' + head +
     '<button type="button" class="line-timer" data-action="set-timer" data-kind="cardio" data-slot="' + esc(slot) + '" aria-label="Time this">⏱</button>' +
     '<button type="button" class="done" data-cardio-done="' + esc(slot) + '" aria-pressed="' + (c.done ? 'true' : 'false') + '" aria-label="' + esc(c.machine) + ' done">✓</button></div>' +
-    '<div class="cardio-sub">' + esc(row.target) + (row.note ? ' · ' + esc(row.note) : '') +
-    ' · <a class="ex-history inline" href="#exercise/' + encodeURIComponent(c.machine) + '">history</a>' +
-    (last ? '<br>last time: ' + esc(last) : '') + '</div>' +
+    '<div class="cardio-sub">' + sub + (last ? '<br>last time: ' + esc(last) : '') + '</div>' +
     '<div class="cardio-fields">' +
     field('minutes', c.minutes, 'min', 'decimal', 'minutes') + field('distance', c.distance, 'mi', 'decimal', 'miles') +
     field('calories', c.calories, 'kcal', 'numeric', 'calories') + '</div></div>';
@@ -1763,9 +1822,11 @@ function renderSessionSets(session, rows, note) {
     const unit = unitLabel(row ? row.unit : 'reps');
     const sets = byExercise.get(n).sort((a, b) => Number(a.set_number) - Number(b.set_number));
     const swappedFrom = String(sets[0].swapped_from || '').trim();
+    const isExtra = s => String(s.note || '').trim() === 'extra cardio';      // "+ Add cardio" rows
+    const label = sets.every(isExtra) ? 'extra cardio' : swappedFrom ? 'in place of ' + swappedFrom : '';
     return '<div class="card"><h3>' + esc(n) +
-      (swappedFrom ? ' <span class="muted small">in place of ' + esc(swappedFrom) + '</span>' : '') + '</h3>' + sets.map(s =>
-      '<div class="set-line"><span>Set ' + esc(s.set_number) + '</span><span>' + esc(setText(s, row, unit)) + '</span>' +
+      (label ? ' <span class="muted small">' + esc(label) + '</span>' : '') + '</h3>' + sets.map(s =>
+      '<div class="set-line"><span>' + (isExtra(s) ? 'Extra' : 'Set ' + esc(s.set_number)) + '</span><span>' + esc(setText(s, row, unit)) + '</span>' +
       '<span class="tick">' + (isTrue(s.done) ? '✓' : '') + '</span></div>').join('') + '</div>';
   }).join('');
   if (note) html += '<p class="muted small">' + esc(note) + '</p>';
@@ -1883,7 +1944,11 @@ function renderTopbar(route) {
   const right = document.getElementById('topbar-right');
   const back = (href, label) => '<a class="topbar-btn" href="' + href + '">‹ ' + label + '</a>';
   const historyLink = '<a class="topbar-btn" href="#history">History</a>';
-  const settingsLink = '<a class="topbar-btn" href="#settings" aria-label="Settings">⚙︎</a>';
+  // The gear is an inline SVG so it is the same height as the title on every phone (the gear glyph
+  // renders small, or as an emoji, depending on the font).
+  const settingsLink = '<a class="topbar-btn topbar-gear" href="#settings" aria-label="Settings">' +
+    '<svg class="gear" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.7l-2-3.4a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.5l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.4a.5.5 0 0 0 .1.7L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.7l2 3.4a.5.5 0 0 0 .6.2l2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.4a.5.5 0 0 0-.1-.7L19.4 13zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></a>';
   switch (route.name) {
     case 'workout':
       left.innerHTML = back('#', 'Home'); title.textContent = weekLabel(); right.innerHTML = historyLink; break;
@@ -1898,7 +1963,7 @@ function renderTopbar(route) {
     case 'settings':
       left.innerHTML = back('#', 'Home'); title.textContent = 'Settings'; right.innerHTML = ''; break;
     default:
-      left.innerHTML = ''; title.textContent = 'Shelby\'s Workouts'; right.innerHTML = historyLink + settingsLink;
+      left.innerHTML = historyLink; title.textContent = 'Shelby\'s Workouts'; right.innerHTML = settingsLink;
   }
 }
 
@@ -2069,6 +2134,26 @@ async function handleAction(action, btn) {
       scheduleDraftSave();
       refreshTimerCard();
       break;
+    case 'add-cardio': {                        // one more cardio line under the warm-up
+      if (!current) break;
+      addExtraCardio(current.draft, btn.dataset.slot);
+      markStarted(current.draft);
+      saveDraft(current.draft);
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+      break;
+    }
+    case 'remove-cardio': {
+      if (!current) break;
+      const correction = removeExtraCardio(current.draft, btn.dataset.slot);
+      saveDraft(current.draft);
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+      if (correction) scheduleAutosave();         // it was already in the Log: send the "not done" row
+      break;
+    }
     case 'set-timer': openSetTimer(btn.dataset.kind, btn); break;
     case 'set-timer-end': closeSetTimer(true); break;
     case 'set-timer-cancel': closeSetTimer(false); break;

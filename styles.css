@@ -14,6 +14,10 @@
   --done-ink: #14532d;
   --warn: #92400e;
   --warn-soft: #fef3c7;
+  --pink: #db2777;                               /* the stretch block */
+  --pink-soft: #fdf2f8;
+  --pink-line: #f9a8d4;
+  --pink-ink: #831843;
   --radius: 14px;
   --tap: 44px;                                   /* minimum tap target */
   --safe-top: env(safe-area-inset-top, 0px);
@@ -35,6 +39,10 @@
     --done-ink: #d1fae5;
     --warn: #fbbf24;
     --warn-soft: #3a2a08;
+    --pink: #f472b6;
+    --pink-soft: #2a1520;
+    --pink-line: #5c2a44;
+    --pink-ink: #fbcfe8;
   }
 }
 
@@ -81,6 +89,8 @@ h2, h3 { line-height: 1.25; }
 }
 .topbar-left { justify-self: start; }
 .topbar-right { justify-self: end; display: flex; gap: 2px; }
+.topbar-gear { padding: 0 8px; }                /* the ⚙ on Home: an SVG the height of the title */
+.topbar-gear .gear { display: block; width: 24px; height: 24px; }
 .topbar-btn {
   display: inline-flex;
   align-items: center;
@@ -416,6 +426,18 @@ body.sheet-open { overflow: hidden; }
   color: var(--accent); font-weight: 700; font-size: 14px; text-align: left;
 }
 
+/* ---- the stretch block: pink, so it reads as its own thing after the lifting ------------ */
+.block-stretch { background: var(--pink-soft); border-color: var(--pink-line); }
+.block-stretch h3 { color: var(--pink); }
+.block-stretch .hint { color: var(--pink-ink); opacity: 0.85; }
+.block-stretch .exercise { border-top-color: var(--pink-line); }
+.block-stretch .ex-target, .block-stretch .ex-note, .block-stretch .ex-swapped { color: var(--pink-ink); opacity: 0.8; }
+.block-stretch .ex-video, .block-stretch .ex-link, .block-stretch a { color: var(--pink); }
+.block-stretch .line-timer { background: var(--card); border-color: var(--pink-line); color: var(--pink); }
+.block-stretch .done { border-color: var(--pink-line); }
+.block-stretch .done[aria-pressed="true"] { background: var(--pink); border-color: var(--pink); }
+.block-stretch .check-secs { color: var(--pink); }
+
 /* ---- cardio line: machine, minutes · miles · kcal ---------------------------- */
 .cardio-line { padding: 10px 0 8px; }
 .cardio-head { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) var(--tap); gap: 8px; align-items: center; }
@@ -433,6 +455,10 @@ body.sheet-open { overflow: hidden; }
 .cardio-field .in { font-size: 17px; padding: 0 6px; }
 .cardio-line.is-done .in { opacity: 0.7; }
 .walk-btn { border-style: dashed; }
+/* "+ Add cardio" under the warm-up line: each extra line logs as set 2, 3, … of the machine picked */
+.cardio-line.cardio-extra { border-top: 1px dashed var(--line); }
+.cardio-sub .ex-link.inline { padding: 8px 0; margin: 0; font-size: 13px; }
+.btn.ghost.add-cardio { margin: 8px 0 4px; border-style: dashed; color: var(--accent); }
 .day-done .done-date { margin-left: auto; flex: 0 0 auto; font-size: 14px; font-weight: 700; white-space: nowrap; }
 
 /* ---- the ⏱ clock: full screen, one big number, one big End button ---------------- */

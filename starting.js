@@ -6,7 +6,10 @@
 //   '15–20'  → a dumbbell range in lb (from the Starting weights table in docs/PROGRAM.md)
 //   '5'      → a single weight
 //   'pin'    → a machine or cable stack: note the pin number that makes 12 reps hard but doable
-// An exercise that is not listed shows an empty box. Edit here, bump the version markers, redeploy.
+//   'bar'    → the Smith machine: start with the empty bar, log the plates added per side
+// The dumbbell rack at the Avalon gym goes 5, 10, 15 … 50 lb in 5-lb steps (no 8s or 12s), so the
+// hints only name weights that exist. An exercise that is not listed shows an empty box.
+// Edit here, bump the version markers, redeploy.
 
 export const START_WEIGHTS = {
   // Legs & glutes
@@ -16,18 +19,18 @@ export const START_WEIGHTS = {
   'Dumbbell Romanian Deadlift': '15–20',
   'Dumbbell Sumo Squat': '20–30',
   'Dumbbell Sumo Deadlift': '20–30',
-  'Dumbbell Reverse Lunges': '8–10',
-  'Walking/Reverse Lunges (DB)': '8–10',
+  'Dumbbell Reverse Lunges': '10',
+  'Walking/Reverse Lunges (DB)': '10',
   'Glute Bridge (DB on hips)': '20–25',
 
   // Upper body dumbbells
-  'Shoulder Press (DB/machine)': '8–10',
+  'Shoulder Press (DB/machine)': '5–10',
   'Dumbbell Lateral Raises': '5',
   'Bent-Over Rear Delt Fly': '5',
-  'Dumbbell Hammer Curls': '8–10',
-  'Dumbbell Biceps Curls': '8–10',
-  'Dumbbell One-Arm Row': '12–15',
-  'Dumbbell Triceps Kickbacks': '5–8',
+  'Dumbbell Hammer Curls': '10',
+  'Dumbbell Biceps Curls': '10',
+  'Dumbbell One-Arm Row': '15',
+  'Dumbbell Triceps Kickbacks': '5',
 
   // Abs
   'Russian Twists (med ball)': '6–8',
@@ -36,7 +39,6 @@ export const START_WEIGHTS = {
   'Lat Pulldown Machine': 'pin',
   'Low Row Machine': 'pin',
   'Chest Press Machine': 'pin',
-  'Leg Curl Machine': 'pin',
   'Ab Machine': 'pin',
   'Cable Straight-Arm Pulldown': 'pin',
   'Cable Tricep Pushdown': 'pin',
@@ -50,13 +52,35 @@ export const START_WEIGHTS = {
   'Cable Face Pull': 'pin',
   'Cable Crunch': 'pin',
   'Pallof Press': 'pin',
-  'Chest-Supported Dumbbell Row': '12–15',
-  'Dumbbell Bent-Over Row': '12–15',
-  'Incline Dumbbell Curls': '8–10',
-  'Alternating Dumbbell Curls': '8–10',
+  'Single-Arm Cable Row': 'pin',
+  'Cable Chest Fly': 'pin',
+  'Cable Overhead Triceps Extension': 'pin',
+  'Cable Pull-Through': 'pin',
+  'Cable Glute Kickback': 'pin',
+  'Cable Woodchop': 'pin',
+  'Chest-Supported Dumbbell Row': '15',
+  'Dumbbell Bent-Over Row': '15',
+  'Incline Dumbbell Curls': '10',
+  'Alternating Dumbbell Curls': '10',
   'Dumbbell Front Raises': '5',
   'Dumbbell Deadlift': '15–20',
   'Dumbbell Squat to Bench': '15–20',
-  'Dumbbell Step-Ups': '8–10',
+  'Dumbbell Step-Ups': '10',
   'Dumbbell Hip Thrust': '20–25',
+  'Dumbbell Bench Press': '10–15',
+  'Incline Dumbbell Press': '10–15',
+  'Dumbbell Chest Fly': '10',
+  'Dumbbell Pullover': '15',
+  'Overhead Dumbbell Triceps Extension': '10',
+  'Dumbbell Side Bend': '15',
+
+  // Kettlebells (by the studio mirror), medicine balls (studio rack), the Smith machine
+  'Kettlebell Swing': '15–20',
+  'Kettlebell Goblet Squat': '15–20',
+  'Kettlebell Deadlift': '20',
+  'Medicine Ball Slams': '8–10',
+  'Smith Machine Squat': 'bar',
+  'Smith Machine Bench Press': 'bar',
+  'Smith Machine Romanian Deadlift': 'bar',
+  'Smith Machine Hip Thrust': 'bar',
 };

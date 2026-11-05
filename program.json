@@ -86,7 +86,7 @@
   ],
   "rest_day_note": "Rest day — walk Blu.",
   "rules": [
-    "Log every weight. Top of the rep range on every set with clean form → go up next session (dumbbells +2.5–5 lb, machines +1 pin). Can't reach the bottom of the range → drop back one.",
+    "Log every weight. Top of the rep range on every set with clean form → go up next session (dumbbells +5 lb — the rack goes 5, 10, 15 … 50 — machines +1 pin). If 5 lb is too big a jump, add a rep per set first. Can't reach the bottom of the range → drop back one.",
     "Supersets: A then B, rest 45–60 sec, repeat. Circuits: all four back to back, rest 60–90 sec, repeat.",
     "Warm up every time: 5 easy minutes of cardio, then one light set before the first working set. Stretch 3–5 min after.",
     "Missed a day? Slide, don't skip. Days 1 and 2 are the priority; Day 4 is the first to drop. Three days is a win, two is fine, zero is the only bad week.",
@@ -131,7 +131,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “High Pull”"
             },
             {
               "exercise_order": 2,
@@ -157,7 +157,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Low Row”"
             },
             {
               "exercise_order": 2,
@@ -166,7 +166,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Overhead Press”, or dumbbells"
             }
           ]
         },
@@ -183,7 +183,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, straight bar"
             },
             {
               "exercise_order": 2,
@@ -192,7 +192,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, rope or bar"
             }
           ]
         },
@@ -324,12 +324,12 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Leg Curl Machine",
+              "exercise": "Stability Ball Leg Curl",
               "target": "10–12",
-              "log_weight": true,
-              "bodyweight": false,
+              "log_weight": false,
+              "bodyweight": true,
               "unit": "reps",
-              "note": ""
+              "note": "Heels on the ball, hips up, curl the ball in"
             }
           ]
         },
@@ -405,7 +405,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Chest Press”"
             },
             {
               "exercise_order": 2,
@@ -483,7 +483,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Core” — straps over the shoulders, crunch forward"
             },
             {
               "exercise_order": 2,
@@ -671,7 +671,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “High Pull”"
             },
             {
               "exercise_order": 2,
@@ -697,7 +697,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Low Row”"
             },
             {
               "exercise_order": 2,
@@ -706,7 +706,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Overhead Press”, or dumbbells"
             }
           ]
         },
@@ -723,7 +723,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, straight bar"
             },
             {
               "exercise_order": 2,
@@ -732,7 +732,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, rope or bar"
             }
           ]
         },
@@ -864,12 +864,12 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Leg Curl Machine",
+              "exercise": "Stability Ball Leg Curl",
               "target": "10–12",
-              "log_weight": true,
-              "bodyweight": false,
+              "log_weight": false,
+              "bodyweight": true,
               "unit": "reps",
-              "note": ""
+              "note": "Heels on the ball, hips up, curl the ball in"
             }
           ]
         },
@@ -945,7 +945,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Chest Press”"
             },
             {
               "exercise_order": 2,
@@ -1023,7 +1023,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Core” — straps over the shoulders, crunch forward"
             },
             {
               "exercise_order": 2,
@@ -1211,7 +1211,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “High Pull”"
             },
             {
               "exercise_order": 2,
@@ -1237,7 +1237,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Low Row”"
             },
             {
               "exercise_order": 2,
@@ -1246,7 +1246,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Overhead Press”, or dumbbells"
             }
           ]
         },
@@ -1263,7 +1263,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, straight bar"
             },
             {
               "exercise_order": 2,
@@ -1272,7 +1272,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Nautilus cable tower, high pulley, rope or bar"
             }
           ]
         },
@@ -1404,12 +1404,12 @@
             },
             {
               "exercise_order": 2,
-              "exercise": "Leg Curl Machine",
-              "target": "8–10",
-              "log_weight": true,
-              "bodyweight": false,
+              "exercise": "Stability Ball Leg Curl",
+              "target": "12–15",
+              "log_weight": false,
+              "bodyweight": true,
               "unit": "reps",
-              "note": ""
+              "note": "Heels on the ball, hips up, curl the ball in"
             }
           ]
         },
@@ -1485,7 +1485,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Chest Press”"
             },
             {
               "exercise_order": 2,
@@ -1563,7 +1563,7 @@
               "log_weight": true,
               "bodyweight": false,
               "unit": "reps",
-              "note": ""
+              "note": "Technogym “Core” — straps over the shoulders, crunch forward"
             },
             {
               "exercise_order": 2,

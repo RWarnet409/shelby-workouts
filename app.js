@@ -15,7 +15,7 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '11';                       // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '12';                      // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
@@ -283,9 +283,10 @@ function nudgeFor(row, date) {
   if (!done.length) return null;
   const allTop = done.every(s => Number(s.reps) >= t.max);
   if (!allTop) return null;
+  if (/smith/i.test(row.exercise)) return 'All sets hit ' + t.max + '+ last time — add 5 lb a side';
   if (isMachine(row.exercise)) return 'All sets hit ' + t.max + '+ last time — go up one pin';
   if (le.weight === null || le.weight === undefined) return 'All sets hit ' + t.max + '+ last time — try a little more weight';
-  return 'All sets hit ' + t.max + '+ last time — try ' + fmtNum(Number(le.weight) + 2.5) + ' lb';
+  return 'All sets hit ' + t.max + '+ last time — try ' + fmtNum(Number(le.weight) + 5) + ' lb';   // the rack goes up in 5s
 }
 
 // "15 lb × 12, 12, 11" or "15×12, 17.5×10" (weights differ) or "12, 12 reps" (bodyweight)

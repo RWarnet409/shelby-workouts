@@ -78,6 +78,13 @@
       "weekday": "Friday or Saturday",
       "focus": "Legs, Glutes, Abs (circuits)",
       "minutes": 30
+    },
+    {
+      "day_id": "walk",
+      "day_label": "Walk",
+      "weekday": "Any day",
+      "focus": "Walk with Blu",
+      "minutes": 30
     }
   ],
   "rest_days": [
@@ -99,7 +106,7 @@
     {
       "phase": 1,
       "day_id": "day1",
-      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -230,13 +237,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 1,
       "day_id": "day2",
-      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -259,7 +328,7 @@
               "target": "10 each",
               "log_weight": false,
               "bodyweight": true,
-              "unit": "minutes",
+              "unit": "reps",
               "note": ""
             }
           ]
@@ -367,13 +436,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Lying Hamstring Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Standing Quad Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 1,
       "day_id": "day3",
-      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -504,13 +635,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Overhead Triceps Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 1,
       "day_id": "day4",
-      "cooldown": "Cool-down: 3–5 min stretch",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -633,13 +826,99 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 5,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Sphinx Pose",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Knee-to-Chest Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "day_id": "walk",
+      "cooldown": null,
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Walk",
+          "block_type": "walk",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Walk with Blu",
+              "target": "20–40 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": "Minutes and miles; the timer can clock it"
+            }
+          ]
         }
       ]
     },
     {
       "phase": 2,
       "day_id": "day1",
-      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -770,13 +1049,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 2,
       "day_id": "day2",
-      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -799,7 +1140,7 @@
               "target": "10 each",
               "log_weight": false,
               "bodyweight": true,
-              "unit": "minutes",
+              "unit": "reps",
               "note": ""
             }
           ]
@@ -907,13 +1248,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Lying Hamstring Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Standing Quad Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 2,
       "day_id": "day3",
-      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1044,13 +1447,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Overhead Triceps Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 2,
       "day_id": "day4",
-      "cooldown": "Cool-down: 3–5 min stretch",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1173,13 +1638,99 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 5,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Sphinx Pose",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Knee-to-Chest Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "day_id": "walk",
+      "cooldown": null,
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Walk",
+          "block_type": "walk",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Walk with Blu",
+              "target": "20–40 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": "Minutes and miles; the timer can clock it"
+            }
+          ]
         }
       ]
     },
     {
       "phase": 3,
       "day_id": "day1",
-      "cooldown": "Cool-down: 3–5 min stretch in the stretching area",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1310,13 +1861,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 3,
       "day_id": "day2",
-      "cooldown": "Cool-down: 3–5 min stretch (hip flexors, hamstrings)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1339,7 +1952,7 @@
               "target": "10 each",
               "log_weight": false,
               "bodyweight": true,
-              "unit": "minutes",
+              "unit": "reps",
               "note": ""
             }
           ]
@@ -1447,13 +2060,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Lying Hamstring Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Standing Quad Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 3,
       "day_id": "day3",
-      "cooldown": "Cool-down: 3–5 min stretch (chest, shoulders)",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1584,13 +2259,75 @@
               "note": ""
             }
           ]
+        },
+        {
+          "block_order": 6,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Doorway Chest Stretch",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Cross-Body Shoulder Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Overhead Triceps Stretch",
+              "target": "20 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Thread the Needle",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Child's Pose",
+              "target": "45 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
         }
       ]
     },
     {
       "phase": 3,
       "day_id": "day4",
-      "cooldown": "Cool-down: 3–5 min stretch",
+      "cooldown": null,
       "blocks": [
         {
           "block_order": 1,
@@ -1711,6 +2448,92 @@
               "bodyweight": false,
               "unit": "minutes",
               "note": ""
+            }
+          ]
+        },
+        {
+          "block_order": 5,
+          "block": "Stretch (5 min)",
+          "block_type": "stretch",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Cat-Cow",
+              "target": "10",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "reps",
+              "note": ""
+            },
+            {
+              "exercise_order": 2,
+              "exercise": "Sphinx Pose",
+              "target": "30 sec",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 3,
+              "exercise": "Knee-to-Chest Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 4,
+              "exercise": "Figure-4 Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 5,
+              "exercise": "Kneeling Hip Flexor Stretch",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            },
+            {
+              "exercise_order": 6,
+              "exercise": "Lying Spinal Twist",
+              "target": "30 sec/side",
+              "log_weight": false,
+              "bodyweight": true,
+              "unit": "time",
+              "note": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "day_id": "walk",
+      "cooldown": null,
+      "blocks": [
+        {
+          "block_order": 1,
+          "block": "Walk",
+          "block_type": "walk",
+          "sets": null,
+          "exercises": [
+            {
+              "exercise_order": 1,
+              "exercise": "Walk with Blu",
+              "target": "20–40 min",
+              "log_weight": false,
+              "bodyweight": false,
+              "unit": "minutes",
+              "note": "Minutes and miles; the timer can clock it"
             }
           ]
         }

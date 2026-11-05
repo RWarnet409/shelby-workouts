@@ -15,8 +15,12 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '12';                      // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '13';                      // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
+const WALK_ID = 'walk';                        // "Walk with Blu": a repeatable day outside the 1 → 4 cycle
+const ALL_DAY_IDS = DAY_ORDER.concat(WALK_ID);
+// The cardio dropdown until the Sheet's Exercises tab has arrived (its Cardio · Machine rows win)
+const CARDIO_FALLBACK = ['Treadmill', 'Elliptical', 'Recumbent Bike', 'Spin Bike', 'StairMaster', 'Air Bike', 'Arm Bike', 'Outdoor Walk'];
 const REQUEST_TIMEOUT_MS = 20000;              // Apps Script usually answers in 1–3 s
 const STALE_AFTER_MS = 10 * 60 * 1000;         // re-fetch bootstrap when the app is reopened after this long
 const AUTOSAVE_MS = 3000;                      // a change in the workout is sent to the sheet this long after the last tap
@@ -29,6 +33,7 @@ const LS = {
   draftPrefix: 'swa.draft.',                   // + day_id → the workout in progress for that day
   stale: 'swa.stale',                          // drafts from another day that were started but never finished
   summary: 'swa.summary',                      // what the last Finish did (sets, minutes, weights that went up) until dismissed
+  cardioLast: 'swa.cardioLast',                // Program slot → the cardio machine she picked last time
 };
 
 // ------------------------------------------------------------------------------- 2. storage
@@ -142,7 +147,10 @@ function dayMeta(dayId) {
 
 // The blocks and exercises for one day in one phase, in display order.
 function workoutFor(phase, dayId) {
-  const rows = state.program.filter(r => Number(r.phase) === phase && r.day_id === dayId);
+  let rows = state.program.filter(r => Number(r.phase) === phase && r.day_id === dayId);
+  if (!rows.length && state.programJson) {     // a day the Sheet doesn't have yet (the Walk day): program.json's copy
+    rows = flattenProgramJson(state.programJson).filter(r => Number(r.phase) === phase && r.day_id === dayId);
+  }
   const blocks = new Map();
   rows.forEach(r => {
     const key = Number(r.block_order);
@@ -204,6 +212,27 @@ function unitLabel(unit) {
   return unit === 'time' ? 'sec' : unit === 'minutes' ? 'min' : 'reps';
 }
 
+// A warm-up / finisher / walk line that logs minutes (and miles, calories) instead of a bare tick:
+// any line in a block without sets whose unit is minutes.
+function isCardioRow(row, block) {
+  return row.unit === 'minutes' && (block.sets === null || block.sets === undefined || Number(block.sets) <= 0);
+}
+// The dropdown on a cardio line: the library's Cardio · Machine rows, else the built-in list.
+function cardioMachines() {
+  const lib = state.exercises.filter(e => libKey(e.body_part) === 'cardio' && libKey(e.category) === 'machine').map(e => e.exercise);
+  return lib.length ? lib : CARDIO_FALLBACK.slice();
+}
+// "5 min · 0.4 mi · 48 kcal" from anything carrying minutes / distance_mi / calories
+function cardioSummary(x) {
+  const has = v => v !== null && v !== undefined && v !== '';
+  const parts = [];
+  if (has(x.minutes)) parts.push(fmtNum(x.minutes) + ' min');
+  if (has(x.distance_mi)) parts.push(fmtNum(x.distance_mi) + ' mi');
+  if (has(x.calories)) parts.push(fmtNum(x.calories) + ' kcal');
+  return parts.join(' · ');
+}
+function hasCardioNumbers(x) { return !!x && cardioSummary(x) !== ''; }
+
 // ---- exercise library (the Exercises tab), swaps and favorites ------------------------
 // The library is what makes "swap" and "☆ favorite" appear: without an Exercises tab in the Sheet
 // (or with the old script, which doesn't send it) the workout page looks as it did before.
@@ -228,7 +257,7 @@ function effectiveWorkout(workout, draft) {
     blocks: workout.blocks.map(b => ({
       ...b,
       exercises: b.exercises.map(row => {
-        if (b.sets === null || Number(b.sets) <= 0) return row;        // warm-up / finisher lines don't swap
+        if ((b.sets === null || Number(b.sets) <= 0) && b.block_type !== 'stretch') return row;   // warm-up / cardio lines don't swap; stretches do
         const to = swaps[row.exercise];
         const lib = to ? libraryRow(to) : null;
         if (!lib || libKey(lib.exercise) === libKey(row.exercise)) return row;
@@ -291,6 +320,7 @@ function nudgeFor(row, date) {
 
 // "15 lb × 12, 12, 11" or "15×12, 17.5×10" (weights differ) or "12, 12 reps" (bodyweight)
 function setsSummary(sets, row) {
+  if (sets.some(hasCardioNumbers)) return cardioSummary(sets.find(hasCardioNumbers));   // a cardio row: minutes · miles · kcal
   const unit = unitLabel(row ? row.unit : 'reps');
   const ws = sets.map(s => (s.weight === '' || s.weight === null || s.weight === undefined) ? null : Number(s.weight));
   const rs = sets.map(s => (s.reps === '' || s.reps === null || s.reps === undefined) ? '–' : String(s.reps));
@@ -368,7 +398,10 @@ function mergeLast(fresh) {
     const now = fresh[k];
     const old = state.last[k];
     if (!old || !now || !now.date || !old.date) return;
-    if (old.date < now.date) now.prev = { date: old.date, weight: old.weight, reps: old.reps, sets: old.sets || [] };
+    if (old.date < now.date) {
+      now.prev = { date: old.date, weight: old.weight, reps: old.reps, sets: old.sets || [],
+        minutes: old.minutes, distance_mi: old.distance_mi, calories: old.calories };
+    }
     else if (old.date === now.date && old.prev) now.prev = old.prev;
   });
   return fresh;
@@ -446,12 +479,18 @@ function applySetsToLast(sets) {
   sets.forEach(s => {
     const e = state.last[s.exercise] || (state.last[s.exercise] = { date: null, weight: null, reps: null, sets: [] });
     if (e.date !== s.date) {                                   // a new session: remember the one before it
-      if (e.date) e.prev = { date: e.date, weight: e.weight, reps: e.reps, sets: e.sets || [] };
+      if (e.date) {
+        e.prev = { date: e.date, weight: e.weight, reps: e.reps, sets: e.sets || [],
+          minutes: e.minutes, distance_mi: e.distance_mi, calories: e.calories };
+      }
       e.date = s.date; e.sets = [];
     }
     if (s.weight !== null && s.weight !== undefined) e.weight = s.weight;
     if (s.reps !== null && s.reps !== undefined && s.reps !== '') e.reps = s.reps;
-    const rec = { set_number: s.set_number, weight: s.weight, reps: s.reps, done: !!s.done };
+    ['minutes', 'distance_mi', 'calories'].forEach(k => { if (s[k] !== null && s[k] !== undefined && s[k] !== '') e[k] = s[k]; });
+    const nn = v => (v === undefined ? null : v);
+    const rec = { set_number: s.set_number, weight: s.weight, reps: s.reps, done: !!s.done,
+      minutes: nn(s.minutes), distance_mi: nn(s.distance_mi), calories: nn(s.calories) };
     const i = e.sets.findIndex(x => Number(x.set_number) === s.set_number);
     if (i >= 0) e.sets[i] = rec; else e.sets.push(rec);
     e.sets.sort((a, b) => a.set_number - b.set_number);
@@ -528,7 +567,12 @@ async function flushQueue() {
 function isTrue(v) { return v === true || String(v).toLowerCase() === 'true'; }
 
 function lastCompletedSession() {
-  return state.sessions.find(s => isTrue(s.completed)) || null;
+  return state.sessions.find(s => isTrue(s.completed) && s.day_id !== WALK_ID) || null;   // walks don't move next-up
+}
+
+// Completed walks with Blu in the current week, newest first.
+function walksThisWeek() {
+  return state.sessions.filter(x => x.day_id === WALK_ID && Number(x.week) === state.week && isTrue(x.completed));
 }
 
 // The day after the last completed session in the cycle 1 → 2 → 3 → 4 → 1. Days already done this
@@ -589,10 +633,14 @@ function setKey(exercise, n) { return exercise + '|' + n; }
 function loadDraft(dayId, phase) {
   const today = todayIso();
   const d = lsGet(draftKey(dayId), null);
-  if (d && d.date === today) {
+  const loggedWalk = dayId === WALK_ID && d && d.completed;    // a walk already logged: the next open starts a new one
+  if (d && d.date === today && !loggedWalk) {
     d.phase = phase;                          // the week was changed mid-day: keep what she has typed
     if (!d.swaps) d.swaps = {};               // drafts from before swaps existed
     if (!d.collapsed) d.collapsed = {};       // drafts from before collapsing existed
+    if (!d.cardio) d.cardio = {};             // drafts from before cardio lines and the ⏱ existed
+    if (!d.checkSecs) d.checkSecs = {};
+    if (d.setTimer === undefined) d.setTimer = null;
     if (d.timerStartedAt === undefined) {     // drafts from before the timer existed
       d.timerStartedAt = null; d.timerPausedAt = null; d.timerPausedMs = 0; d.timerStoppedAt = null;
     }
@@ -611,8 +659,11 @@ function loadDraft(dayId, phase) {
     timerEnded: false,                        // she tapped End: show the time as final, offer Start again
     timerStoppedAt: null,                     // set by Finish — the only thing that really ends it
     sets: {},                                 // "exercise|n" → { weight, reps, done, touched, sentSig, prevWeight }
-    checks: {},                               // warmup / finisher lines → true when ticked
-    checksSent: {},
+    checks: {},                               // warmup / stretch lines → true when ticked (cardio lines mirror their ✓ here)
+    checksSent: {},                           // exercise → the "done|seconds" signature last queued
+    checkSecs: {},                            // check lines timed with the ⏱: exercise → seconds
+    cardio: {},                               // cardio lines: Program slot → { machine, minutes, distance, calories, done, touched, sentSig }
+    setTimer: null,                           // the ⏱ clock while it runs: { kind, key | name | slot, label, sub, target, startedAt }
     swaps: {},                                // Program exercise → the library exercise done instead, today only
     collapsed: {},                            // exercise → true when she folded its set rows away
     note: '',                                 // the Notes box at the bottom of the page
@@ -629,6 +680,7 @@ function draftHasActivity(d) {
   if (!d) return false;
   return Object.values(d.sets || {}).some(s => s.done || s.touched) ||
     Object.values(d.checks || {}).some(Boolean) ||
+    Object.values(d.cardio || {}).some(c => c.done || c.touched) ||
     String(d.note || '').trim() !== '' || !!d.timerStartedAt;
 }
 
@@ -673,7 +725,7 @@ function dropStaleDraft(sessionId) {
 // Every day's draft is checked, not just the day being opened, so Home can ask right away.
 function shelveOldDrafts() {
   const today = todayIso();
-  DAY_ORDER.forEach(dayId => {
+  ALL_DAY_IDS.forEach(dayId => {
     const d = lsGet(draftKey(dayId), null);
     if (d && d.date !== today) { shelveDraft(d); lsRemove(draftKey(dayId)); }
   });
@@ -681,7 +733,7 @@ function shelveOldDrafts() {
 // The draft for today that has something in it and isn't finished — what the Continue card shows.
 function inProgressDraft() {
   const today = todayIso();
-  for (const dayId of DAY_ORDER) {
+  for (const dayId of ALL_DAY_IDS) {
     const d = lsGet(draftKey(dayId), null);
     if (d && d.date === today && !d.completed && draftHasActivity(d)) return d;
   }
@@ -706,6 +758,38 @@ function getSetEntry(draft, row, n) {
   return draft.sets[k];
 }
 
+// The cardio line's entry: the machine (her last pick for this slot, else the first in the list) with
+// last time's minutes / miles / kcal for that machine pre-filled faint, like a set row.
+function defaultMachine(slot) {
+  const remembered = lsGet(LS.cardioLast, {})[slot];
+  const machines = cardioMachines();
+  if (remembered && machines.includes(remembered)) return remembered;
+  return (/spin/i.test(slot) && machines.find(m => /spin/i.test(m))) || machines[0];
+}
+function getCardioEntry(draft, row, withMachine) {
+  const slot = row.exercise;
+  if (!draft.cardio) draft.cardio = {};
+  let c = draft.cardio[slot];
+  if (!c) {
+    c = draft.cardio[slot] = { slot, machine: withMachine ? defaultMachine(slot) : row.exercise,
+      minutes: null, distance: null, calories: null, done: !!draft.checks[slot], touched: false, sentSig: null };
+    applyCardioPrefill(c, draft.date);
+  }
+  return c;
+}
+function applyCardioPrefill(c, date) {
+  const le = lastBefore(c.machine, date);
+  const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
+  c.minutes = le ? num(le.minutes) : null;
+  c.distance = le ? num(le.distance_mi) : null;
+  c.calories = le ? num(le.calories) : null;
+}
+// The one cardio entry of a Walk draft (the "Walk with Blu" line), once it has been drawn.
+function walkEntry(draft) {
+  const list = Object.values(draft.cardio || {});
+  return list.length ? list[0] : null;
+}
+
 function markStarted(draft) {
   if (!draft.startedAt) draft.startedAt = new Date().toISOString();
 }
@@ -727,9 +811,22 @@ function collectSetsToSend(draft, workout, week) {
           out.push({ ...base, client_id: uuid(), exercise: row.exercise, swapped_from: row.swapped_from || '',
             set_number: i, weight: row.log_weight ? s.weight : null, reps: s.reps, done: !!s.done });
         }
-      } else if (draft.checks[row.exercise] && !draft.checksSent[row.exercise]) {
-        draft.checksSent[row.exercise] = true;
-        out.push({ ...base, client_id: uuid(), exercise: row.exercise, set_number: 1, weight: null, reps: null, done: true });
+      } else if (isCardioRow(row, b)) {                       // cardio line: the machine + minutes / miles / kcal
+        const c = draft.cardio && draft.cardio[row.exercise];
+        if (!c || !(c.done || c.touched)) return;
+        const sig = [c.machine, c.minutes ?? '', c.distance ?? '', c.calories ?? '', c.done ? 1 : 0].join('|');
+        if (c.sentSig === sig) return;
+        c.sentSig = sig;
+        out.push({ ...base, client_id: uuid(), exercise: c.machine, swapped_from: c.machine === row.exercise ? '' : row.exercise,
+          set_number: 1, weight: null, reps: null, minutes: c.minutes, distance_mi: c.distance, calories: c.calories, done: !!c.done });
+      } else if (draft.checks[row.exercise]) {                 // check line (warm-up move, stretch): once, and again when the ⏱ times it
+        const secs = draft.checkSecs ? draft.checkSecs[row.exercise] : undefined;
+        const sig = '1|' + (secs === null || secs === undefined ? '' : secs);
+        const sent = draft.checksSent[row.exercise];
+        if (sent === true ? sig === '1|' : sent === sig) return;   // `true` is how drafts before v13 marked it sent
+        draft.checksSent[row.exercise] = sig;
+        out.push({ ...base, client_id: uuid(), exercise: row.exercise, swapped_from: row.swapped_from || '',
+          set_number: 1, weight: null, reps: secs === undefined ? null : secs, done: true });
       }
     });
   });
@@ -851,6 +948,122 @@ function refreshTimerCard() {
   if (timerRunning(current.draft)) startTick(); else stopTick();
 }
 
+// ---- the ⏱ clock ---------------------------------------------------------------------
+// One full-screen clock for a timed set (plank), a stretch hold or a cardio line. Start opens it;
+// End writes the elapsed time into the row (seconds, or minutes for cardio) and ticks it done; Cancel
+// logs nothing. The start time lives in the draft, so a locked phone reopens on the running clock.
+let wakeLock = null;
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { wakeLock = null; }
+}
+function releaseWakeLock() {
+  try { if (wakeLock) wakeLock.release(); } catch (e) { /* ignore */ }
+  wakeLock = null;
+}
+function openSetTimer(kind, btn) {
+  if (!current) return;
+  const { draft, workout } = current;
+  const rows = workout.blocks.flatMap(b => b.exercises);
+  let spec = null;
+  if (kind === 'set') {
+    const s = draft.sets[btn.dataset.key];
+    const row = s && rows.find(r => r.exercise === s.exercise);
+    if (!s || !row) return;
+    spec = { kind, key: btn.dataset.key, label: row.exercise, sub: 'Set ' + s.set_number, target: row.target };
+  } else if (kind === 'check') {
+    const row = rows.find(r => r.exercise === btn.dataset.name);
+    if (!row) return;
+    spec = { kind, name: row.exercise, label: row.exercise, sub: '', target: row.target };
+  } else if (kind === 'cardio') {
+    const c = draft.cardio && draft.cardio[btn.dataset.slot];
+    const row = rows.find(r => r.exercise === btn.dataset.slot);
+    if (!c || !row) return;
+    spec = { kind, slot: btn.dataset.slot, label: c.machine, sub: '', target: row.target };
+  }
+  if (!spec) return;
+  draft.setTimer = { ...spec, startedAt: localIso(new Date()) };
+  markStarted(draft);
+  saveDraft(draft);
+  renderSetTimer();
+}
+function setTimerElapsedMs() {
+  const t = current && current.draft.setTimer;
+  return t ? Math.max(0, Date.now() - new Date(t.startedAt).getTime()) : 0;
+}
+// Seconds at which the clock turns green: the target's low end (minutes for a cardio line).
+function setTimerGoalSecs(t) {
+  const tg = parseTarget(t.target);
+  if (tg.min === null) return null;
+  return t.kind === 'cardio' ? tg.min * 60 : tg.min;
+}
+let setTick = null;
+function stopSetTick() { clearInterval(setTick); setTick = null; }
+function startSetTick() {
+  stopSetTick();
+  const tick = () => {
+    const el = document.getElementById('tm-clock');
+    const t = current && current.draft.setTimer;
+    if (!el || !t) { stopSetTick(); return; }
+    const ms = setTimerElapsedMs();
+    el.textContent = fmtClock(ms);
+    const goal = setTimerGoalSecs(t);
+    el.classList.toggle('hit', goal !== null && ms / 1000 >= goal);
+  };
+  tick();
+  setTick = setInterval(tick, 250);
+}
+function renderSetTimer() {
+  const box = document.getElementById('timer-modal');
+  if (!box) return;
+  const t = current && current.draft.setTimer;
+  if (!t) {
+    if (!box.hidden) { box.hidden = true; box.innerHTML = ''; document.body.classList.remove('timer-open'); }
+    stopSetTick();
+    releaseWakeLock();
+    return;
+  }
+  box.innerHTML = '<div class="tm" role="dialog" aria-modal="true" aria-label="Timer for ' + esc(t.label) + '">' +
+    '<div class="tm-name">' + esc(t.label) + '</div>' +
+    (t.sub ? '<div class="tm-sub">' + esc(t.sub) + '</div>' : '') +
+    '<div class="tm-clock" id="tm-clock">' + fmtClock(setTimerElapsedMs()) + '</div>' +
+    '<div class="tm-target">' + (t.target ? 'target ' + esc(t.target) : '') + '</div>' +
+    '<button type="button" class="btn primary tm-end" data-action="set-timer-end">■ End</button>' +
+    '<button type="button" class="btn ghost tm-cancel" data-action="set-timer-cancel">Cancel — don\'t log it</button></div>';
+  box.hidden = false;
+  document.body.classList.add('timer-open');
+  startSetTick();
+  requestWakeLock();
+}
+// End (log = true) or Cancel. The page is redrawn in place so the row shows the new number.
+function closeSetTimer(log) {
+  if (!current || !current.draft.setTimer) return;
+  const draft = current.draft;
+  const t = draft.setTimer;
+  const ms = setTimerElapsedMs();
+  draft.setTimer = null;
+  if (log) {
+    const secs = Math.max(1, Math.round(ms / 1000));
+    if (t.kind === 'set') {
+      const s = draft.sets[t.key];
+      if (s) { s.reps = secs; s.touched = true; s.done = true; }
+    } else if (t.kind === 'check') {
+      if (!draft.checkSecs) draft.checkSecs = {};
+      draft.checkSecs[t.name] = secs;
+      draft.checks[t.name] = true;
+    } else if (t.kind === 'cardio') {
+      const c = draft.cardio && draft.cardio[t.slot];
+      if (c) { c.minutes = Math.max(0.1, Math.round(ms / 6000) / 10); c.touched = true; c.done = true; draft.checks[t.slot] = true; }
+    }
+    markStarted(draft);
+    draft.lastActivityAt = new Date().toISOString();
+  }
+  saveDraft(draft);
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+  if (log) scheduleAutosave();
+}
+
 // Queue the set rows and the session row, and update "last time" on this phone right away.
 // Runs in the background a few seconds after every change, and once more on Finish (`finish`).
 // The session row (completed flag, note, duration) goes out whenever it changed. The script updates
@@ -859,31 +1072,41 @@ function refreshTimerCard() {
 function saveWorkout(draft, workout, finish, opts = {}) {
   const week = opts.week || state.week;
   const endedAt = opts.endedAt ? new Date(opts.endedAt) : new Date();
+  if (finish) {
+    if (opts.endedAt && timerRunning(draft)) draft.timerPausedAt = localIso(endedAt);   // abandoned with the clock running
+    timerFinish(draft, endedAt);                           // Finish is what really ends the timer
+  }
+  const walk = draft.dayId === WALK_ID ? walkEntry(draft) : null;
+  if (finish && walk && (walk.minutes === null || walk.minutes === undefined) && draft.timerStartedAt && draft.timerStoppedAt) {
+    walk.minutes = Math.max(1, Math.round(timerElapsedMs(draft) / 60000));   // the workout timer clocked the walk
+    walk.touched = true; walk.done = true; draft.checks[walk.slot] = true;
+  }
   const sets = collectSetsToSend(draft, workout, week);
   if (sets.length) {
     enqueue({ action: 'logSets', sets });
     applySetsToLast(sets);
-  }
-  if (finish) {
-    if (opts.endedAt && timerRunning(draft)) draft.timerPausedAt = localIso(endedAt);   // abandoned with the clock running
-    timerFinish(draft, endedAt);                           // Finish is what really ends the timer
   }
   if (finish && !draft.completed) {
     draft.completed = true;
     lsRemove(LS.dismissedSuggest);
   }
   if (draft.completed || (draft.timerStartedAt && draft.timerStoppedAt)) draft.durationMin = durationMinutes(draft, endedAt.getTime());
+  const typed = v => v !== null && v !== undefined && v !== '';
+  if (walk && typed(walk.minutes)) draft.durationMin = Number(walk.minutes);          // a typed walk time wins
+  const walkMiles = walk && typed(walk.distance) ? Number(walk.distance) : null;
   const note = String(draft.note || '').trim();
   const timerUsed = !!draft.timerStartedAt;
   const hasActivity = sets.length > 0 || note !== '' || draft.completed || timerUsed ||
     Object.values(draft.sets).some(s => s.sentSig) || Object.keys(draft.checksSent || {}).length > 0;
-  const sessionSig = [draft.completed ? 1 : 0, note, draft.timerStartedAt || '', draft.timerStoppedAt || '', week].join('|');
+  const sessionSig = [draft.completed ? 1 : 0, note, draft.timerStartedAt || '', draft.timerStoppedAt || '', week,
+    draft.durationMin || '', walkMiles === null ? '' : walkMiles].join('|');
   let sessionQueued = false;
   if (hasActivity && sessionSig !== (draft.sentSessionSig || null)) {
     const session = {
       client_id: draft.sessionClientId, date: draft.date, week, phase: draft.phase,
       day_id: draft.dayId, completed: !!draft.completed, duration_min: draft.durationMin || null, note,
       timer_start: draft.timerStartedAt || '', timer_end: draft.timerStoppedAt || '',
+      distance_mi: walkMiles,                                 // walks with Blu; blank for workouts
     };
     enqueueSession(session);
     draft.sentSessionSig = sessionSig;
@@ -918,8 +1141,10 @@ function finishSummary(draft, workout) {
       if (best !== null && prev !== null && best > prev) ups.push({ exercise: row.exercise, from: prev, to: best });
     });
   });
+  const walk = draft.dayId === WALK_ID ? walkEntry(draft) : null;
   return { sessionId: draft.sessionClientId, dayId: draft.dayId, week: draft.week || state.week,
-    durationMin: draft.durationMin || null, done: p.done, total: p.total, ups };
+    durationMin: draft.durationMin || null, distanceMi: walk && walk.distance ? Number(walk.distance) : null,
+    done: p.done, total: p.total, ups };
 }
 
 // ---- background save ------------------------------------------------------------------
@@ -952,7 +1177,15 @@ function fmtNum(n) {
   const x = Number(n);
   return isNaN(x) ? String(n) : String(Math.round(x * 100) / 100);
 }
-// "just now", "12 min ago", "3 hours ago", "2 days ago" — the app shows no dates or weekdays anywhere.
+// "Tue 11/04" from a YYYY-MM-DD date, read as local. Only the Done-this-week cards show a date
+// (Ryan's call, November 4, 2026); everywhere else the app sticks to week and day.
+function fmtDayDate(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' + m[2] + '/' + m[3];
+}
+// "just now", "12 min ago", "3 hours ago", "2 days ago" — relative wording instead of dates.
 function fmtAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (isNaN(mins) || mins < 1) return 'just now';
@@ -1012,7 +1245,7 @@ function homeView() {
     const optional = dayId === 'day4' ? '<span class="tag">optional in a busy week</span>' : '';
     if (big && going) {
       const p = setProgress(going, effectiveWorkout(workoutFor(going.phase, going.dayId), going));
-      const meta = p.done + ' of ' + p.total + ' sets done' + (timerRunning(going) ? ' · timer running' : '');
+      const meta = (p.total ? p.done + ' of ' + p.total + ' sets done' : 'in progress') + (timerRunning(going) ? ' · timer running' : '');
       return '<a class="next-up continue" href="#workout/' + dayId + '">' +
         '<span class="eyebrow">Continue where you left off</span>' +
         '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
@@ -1051,7 +1284,10 @@ function homeView() {
     html += '<p class="muted small" style="margin:14px 0 4px">All four days are done — rest up and start the next week when you\'re ready.</p>';
   }
   html += '<p class="rest-note">' + esc(rest) + ': rest — ' + esc(restNote) + '</p>';
-  if (doneIds.length) html += doneSection(doneIds);
+  html += '<a class="day-btn walk-btn" href="#workout/' + WALK_ID + '">' +
+    '<span><strong>Walk with Blu</strong> · log a walk</span><span class="day-meta">any day</span></a>';
+  const walks = walksThisWeek();
+  if (doneIds.length || walks.length) html += doneSection(doneIds, walks);
 
   if (!apiConfigured()) {
     html += '<p class="sync-line warn">Not connected to the sheet yet — saves stay on this phone.</p>';
@@ -1066,23 +1302,32 @@ function homeView() {
 
 // The bottom of Home: this week's completed days, checked off in green, with a line that scales
 // with the count ("three days is a win" is the program's own rule).
-function doneSection(dayIds) {
+// Each card carries its weekday and date ("Tue 11/04") on the right; walks with Blu list after the days.
+function doneSection(dayIds, walks) {
   const n = dayIds.length;
   const cheer = n >= 4 ? 'All four. A full week — nice work!'
     : n === 3 ? 'Three done — that\'s a win.'
     : n === 2 ? 'Two done — a good week already.'
-    : 'One down — showing up is the hard part.';
+    : n === 1 ? 'One down — showing up is the hard part.'
+    : 'Walks count too — the gym days are still to come.';
+  const card = (href, titleHtml, meta, date) => '<a class="day-btn day-done" href="' + href + '">' +
+    '<span class="done-badge" aria-hidden="true">✓</span>' +
+    '<span class="done-text">' + titleHtml + (meta ? '<br><span class="done-meta">' + esc(meta) + '</span>' : '') + '</span>' +
+    '<span class="done-date">' + esc(fmtDayDate(date)) + '</span></a>';
+  const walkCount = walks.length ? ' · ' + walks.length + ' walk' + (walks.length === 1 ? '' : 's') : '';
   let html = '<section class="done-week" aria-label="Done this week">' +
-    '<div class="done-head"><h3>Done this week</h3><span class="done-count">' + n + ' of ' + DAY_ORDER.length + '</span></div>' +
+    '<div class="done-head"><h3>Done this week</h3><span class="done-count">' + n + ' of ' + DAY_ORDER.length + walkCount + '</span></div>' +
     '<p class="done-cheer">' + esc(cheer) + '</p>';
   dayIds.forEach(d => {
     const s = doneThisWeek(d);
     const m = dayMeta(d);
-    const meta = s.duration_min ? s.duration_min + ' min' : '';
-    html += '<a class="day-btn day-done" href="#workout/' + d + '">' +
-      '<span class="done-badge" aria-hidden="true">✓</span>' +
-      '<span class="done-text"><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) +
-      (meta ? '<br><span class="done-meta">' + esc(meta) + '</span>' : '') + '</span></a>';
+    html += card('#workout/' + d, '<strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus), s.duration_min ? s.duration_min + ' min' : '', s.date);
+  });
+  walks.forEach(s => {
+    const bits = [];
+    if (s.duration_min) bits.push(s.duration_min + ' min');
+    if (s.distance_mi) bits.push(fmtNum(s.distance_mi) + ' mi');
+    html += card('#session/' + encodeURIComponent(s.client_id), '<strong>Walk with Blu</strong>', bits.join(' · '), s.date);
   });
   return html + '</section>';
 }
@@ -1105,6 +1350,7 @@ function summaryCard(s) {
   const m = dayMeta(s.dayId);
   const bits = [];
   if (s.durationMin) bits.push(s.durationMin + ' min');
+  if (s.distanceMi) bits.push(fmtNum(s.distanceMi) + ' mi');
   if (s.total) bits.push(s.done + ' of ' + s.total + ' sets');
   let html = '<section class="summary" aria-label="Last workout">' +
     '<div class="summary-head"><h3>' + esc(m.day_label) + ' done — nice work!</h3>' +
@@ -1135,12 +1381,14 @@ function workoutView(dayId) {
     timerCard(draft);
   if (timerRunning(draft)) startTick(); else stopTick();
   if (sug) html += suggestBanner(sug);
-  if (pi && pi.banner) {
-    const head = pi.banner.split(' — ')[0];
-    html += '<details class="banner"><summary>' + esc(head) + '</summary><p>' + esc(pi.banner) + '</p></details>';
+  if (dayId !== WALK_ID) {                      // a walk has no phase banner or week note
+    if (pi && pi.banner) {
+      const head = pi.banner.split(' — ')[0];
+      html += '<details class="banner"><summary>' + esc(head) + '</summary><p>' + esc(pi.banner) + '</p></details>';
+    }
+    const wn = weekNote(state.week);
+    if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
   }
-  const wn = weekNote(state.week);
-  if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
   if (!workout.blocks.length) {
     html += '<p class="empty">No exercises found for ' + esc(m.day_label) + ' in Phase ' + phase + '. Check the Program tab.</p>';
   }
@@ -1154,7 +1402,8 @@ function workoutView(dayId) {
   html += '</section>' +
     '<div id="savebar" class="savebar' + (allDone ? ' all-done' : '') + '"><div class="savebar-inner">' +
     '<div id="save-status" class="save-status">' + esc(saveStatusText(draft, workout)) + '</div>' +
-    '<button type="button" class="btn primary finish" data-action="finish">' + (draft.completed ? 'Finished ✓ · update' : 'Finish workout') + '</button>' +
+    '<button type="button" class="btn primary finish" data-action="finish">' +
+    (draft.completed ? 'Finished ✓ · update' : dayId === WALK_ID ? 'Log this walk' : 'Finish workout') + '</button>' +
     '</div></div>';
   saveDraft(draft);                            // persist the entries prefill just created
   return html;
@@ -1164,7 +1413,10 @@ function workoutView(dayId) {
 function saveStatusText(draft, workout, syncing) {
   const p = setProgress(draft, workout);
   if (!draft.completed && p.total > 0 && p.done >= p.total) return 'That\'s everything — finish workout?';
-  const base = (draft.completed ? 'Finished ✓ · ' : '') + p.done + ' of ' + p.total + ' sets done';
+  const progress = p.total ? p.done + ' of ' + p.total + ' sets done'
+    : draft.dayId === WALK_ID ? (Object.values(draft.cardio || {}).some(c => c.done) ? 'walk ticked ✓' : 'minutes and miles, then ✓')
+    : 'nothing to count';
+  const base = (draft.completed ? 'Finished ✓ · ' : '') + progress;
   if (syncing) return base + ' · ' + syncing;
   if (state.queueCount) return base + ' · ' + (apiConfigured() ? 'saved on this phone, will sync' : 'saved on this phone');
   if (draft.lastSavedAt) return base + ' · saved ✓';
@@ -1184,10 +1436,14 @@ function blockCard(b, draft) {
   const hint = b.block_type === 'superset' ? 'A then B, rest 45–60 sec'
     : b.block_type === 'circuit' ? 'All four back to back, rest 60–90 sec'
     : b.block_type === 'abs' ? 'Back to back, rest 60 sec between rounds'
+    : b.block_type === 'stretch' ? 'Hold each one and breathe — the ⏱ times a hold for you'
+    : b.block_type === 'walk' ? 'Minutes and miles. Start the timer at the door, or type them in after.'
     : '';
   let html = '<section class="card block block-' + esc(b.block_type) + '"><h3>' + esc(b.block) + '</h3>' +
     (hint ? '<p class="hint">' + esc(hint) + '</p>' : '');
-  b.exercises.forEach(row => { html += n > 0 ? exerciseSets(row, n, draft) : checkLine(row, draft); });
+  b.exercises.forEach(row => {
+    html += n > 0 ? exerciseSets(row, n, draft) : isCardioRow(row, b) ? cardioLine(row, b, draft) : checkLine(row, b, draft);
+  });
   return html + '</section>';
 }
 
@@ -1249,12 +1505,17 @@ function exerciseSets(row, n, draft) {
     const key = setKey(row.exercise, i);
     const label = esc(row.exercise) + ' set ' + i;
     const faint = !s.done && !s.touched ? ' in-hint' : '';         // suggested values look faint until she acts on them
+    const timed = row.unit === 'time';                                  // seconds: the ⏱ can fill them in
+    const timerBtn = cls => '<button type="button" class="' + cls + '" data-action="set-timer" data-kind="set" data-key="' + esc(key) + '"' +
+      ' aria-label="Time ' + label + '">⏱' + (cls.includes('in-timer') ? ' Start' : ' ' + i) + '</button>';
     html += '<div class="set-row' + (s.done ? ' is-done' : '') + '" data-row="' + esc(key) + '">' +
-      '<span class="set-label">Set ' + i + '</span>';
+      (timed && row.log_weight ? timerBtn('set-label set-label-timer') : '<span class="set-label">Set ' + i + '</span>');
     if (row.log_weight) {
       html += '<input class="in in-weight' + faint + '" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next"' +
         ' placeholder="' + esc(hint) + '" value="' + esc(fmtNum(s.weight)) + '" data-key="' + esc(key) + '" data-field="weight" aria-label="' + label + ' weight">' +
         '<span class="unit">lb</span>';
+    } else if (timed) {
+      html += timerBtn('in in-timer') + '<span class="unit"></span>';
     } else {
       html += '<span class="in in-bw" title="bodyweight">BW</span><span class="unit"></span>';
     }
@@ -1282,13 +1543,68 @@ function refreshExerciseBadge(exerciseName) {
   }
 }
 
-function checkLine(row, draft) {
+// A single line with a tick: warm-up moves and the stretch block. Timed lines (unit = time) get a ⏱
+// that fills in the seconds; stretches can be swapped for another one from the library.
+function checkLine(row, block, draft) {
   const on = !!draft.checks[row.exercise];
-  return '<div class="exercise check-line' + (on ? ' is-done' : '') + '">' +
+  const secs = draft.checkSecs ? draft.checkSecs[row.exercise] : undefined;
+  const timed = row.unit === 'time';
+  const slot = row.swapped_from || row.exercise;
+  let tools = '';
+  if (block.block_type === 'stretch' && hasLibrary()) {
+    const opts = swapOptions(slot, current && current.workout);
+    if (opts.same.length || opts.more.length || row.swapped_from) {
+      tools += '<button type="button" class="ex-link inline" data-action="swap" data-slot="' + esc(slot) + '">swap</button>';
+    }
+  }
+  if (row.swapped_from) {
+    tools += '<span class="ex-swapped">in place of ' + esc(row.swapped_from) +
+      ' · <button type="button" class="ex-link inline" data-action="unswap" data-slot="' + esc(row.swapped_from) + '">undo</button></span>';
+  }
+  return '<div class="exercise check-line' + (on ? ' is-done' : '') + '" data-check-line="' + esc(row.exercise) + '">' +
     '<button type="button" class="done" data-check="' + esc(row.exercise) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(row.exercise) + ' done">✓</button>' +
     '<span class="check-text"><span class="ex-head"><span class="ex-name">' + esc(row.exercise) + '</span>' + videoLink(row.exercise) + '</span>' +
-    '<span class="ex-target">' + esc(row.target) + '</span>' +
-    (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') + '</span></div>';
+    '<span class="ex-target">' + esc(row.target) +
+    (secs !== undefined && secs !== null ? ' · <span class="check-secs">' + esc(secs) + ' sec logged</span>' : '') + '</span>' +
+    (row.note ? '<span class="ex-note">' + esc(row.note) + '</span>' : '') +
+    (tools ? '<span class="check-tools">' + tools + '</span>' : '') + '</span>' +
+    (timed ? '<button type="button" class="line-timer" data-action="set-timer" data-kind="check" data-name="' + esc(row.exercise) + '"' +
+      ' aria-label="Time ' + esc(row.exercise) + '">⏱</button>' : '') +
+    '</div>';
+}
+
+// The cardio line (warm-up, finisher, walk): which machine, then minutes · miles · kcal, a ⏱ and a ✓.
+// Logged as one Log row with the machine in `exercise` and the Program slot in `swapped_from`.
+function cardioLine(row, block, draft) {
+  const withSelect = block.block_type !== 'walk';
+  const c = getCardioEntry(draft, row, withSelect);
+  const slot = row.exercise;
+  const faint = !c.done && !c.touched ? ' in-hint' : '';
+  const le = lastBefore(c.machine, draft.date);
+  const last = le ? cardioSummary(le) : '';
+  let head;
+  if (withSelect) {
+    const machines = cardioMachines();
+    if (!machines.includes(c.machine)) machines.unshift(c.machine);
+    head = '<select class="in in-select" data-cardio-machine="' + esc(slot) + '" aria-label="Cardio machine">' +
+      machines.map(m => '<option value="' + esc(m) + '"' + (m === c.machine ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select>';
+  } else {
+    head = '<span class="ex-name cardio-name">' + esc(row.exercise) + '</span>';
+  }
+  const field = (name, value, unit, mode, label) =>
+    '<label class="cardio-field"><input class="in in-cardio' + faint + '" type="text" inputmode="' + mode + '" autocomplete="off" enterkeyhint="next"' +
+    ' value="' + esc(fmtNum(value)) + '" data-cardio-field="' + name + '" data-slot="' + esc(slot) + '" aria-label="' + esc(c.machine) + ' ' + label + '">' +
+    '<span class="unit">' + unit + '</span></label>';
+  return '<div class="exercise cardio-line' + (c.done ? ' is-done' : '') + '" data-cardio="' + esc(slot) + '">' +
+    '<div class="cardio-head">' + head +
+    '<button type="button" class="line-timer" data-action="set-timer" data-kind="cardio" data-slot="' + esc(slot) + '" aria-label="Time this">⏱</button>' +
+    '<button type="button" class="done" data-cardio-done="' + esc(slot) + '" aria-pressed="' + (c.done ? 'true' : 'false') + '" aria-label="' + esc(c.machine) + ' done">✓</button></div>' +
+    '<div class="cardio-sub">' + esc(row.target) + (row.note ? ' · ' + esc(row.note) : '') +
+    ' · <a class="ex-history inline" href="#exercise/' + encodeURIComponent(c.machine) + '">history</a>' +
+    (last ? '<br>last time: ' + esc(last) : '') + '</div>' +
+    '<div class="cardio-fields">' +
+    field('minutes', c.minutes, 'min', 'decimal', 'minutes') + field('distance', c.distance, 'mi', 'decimal', 'miles') +
+    field('calories', c.calories, 'kcal', 'numeric', 'calories') + '</div></div>';
 }
 
 function favButton(name) {
@@ -1371,7 +1687,7 @@ function historyView() {
     const noteLine = noteText
       ? '<br><span class="small note-preview">' + esc(noteText.length > 90 ? noteText.slice(0, 90) + '…' : noteText) + '</span>'
       : '';
-    const mins = s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '';
+    const mins = (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + (s.distance_mi ? ' · ' + esc(fmtNum(s.distance_mi)) + ' mi' : '');
     return '<a class="row" href="#session/' + encodeURIComponent(s.client_id) + '">' +
       '<span><strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus) + '<br>' +
       '<span class="muted small">Week ' + esc(s.week) + ' · ' + status + mins + local + '</span>' + noteLine + '</span>' +
@@ -1389,7 +1705,8 @@ function sessionView(id) {
     '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
     '<p class="day-sub">Week ' + esc(s.week) + ' · ' +
     (isTrue(s.completed) ? 'Completed' : 'Not finished') +
-    (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') + '</p>' +
+    (s.duration_min ? ' · ' + esc(s.duration_min) + ' min' : '') +
+    (s.distance_mi ? ' · ' + esc(fmtNum(s.distance_mi)) + ' mi' : '') + '</p>' +
     (s.timer_start ? '<p class="day-sub">Timer: ' + esc(fmtTime(s.timer_start)) +
       (s.timer_end ? ' – ' + esc(fmtTime(s.timer_end)) : ' (still running)') + '</p>' : '') +
     (String(s.note || '').trim() ? '<p class="session-note">' + esc(String(s.note).trim()) + '</p>' : '') +
@@ -1416,6 +1733,7 @@ async function loadSessionSets(route, s) {
 }
 
 function setText(s, row, unit) {
+  if (hasCardioNumbers(s)) return cardioSummary(s);           // a cardio row: minutes · miles · kcal
   const w = (s.weight === '' || s.weight === null || s.weight === undefined) ? null : Number(s.weight);
   const r = (s.reps === '' || s.reps === null || s.reps === undefined) ? null : s.reps;
   if (w === null && r === null) return 'done';
@@ -1549,7 +1867,7 @@ function parseHash() {
   const name = slash < 0 ? h : h.slice(0, slash);
   const arg = slash < 0 ? '' : h.slice(slash + 1);
   switch (name) {
-    case 'workout': return { name: 'workout', dayId: DAY_ORDER.includes(arg) ? arg : 'day1' };
+    case 'workout': return { name: 'workout', dayId: ALL_DAY_IDS.includes(arg) ? arg : 'day1' };
     case 'history': return { name: 'history' };
     case 'session': return { name: 'session', id: safeDecode(arg) };
     case 'exercise': return { name: 'exercise', exercise: safeDecode(arg) };
@@ -1587,6 +1905,7 @@ function renderTopbar(route) {
 function render() {
   closeSheet();
   stopTick();                                   // the Workout view restarts it when its timer is running
+  stopSetTick();
   if (current && autosaveTimer) autosaveNow();  // leaving a workout: send what is pending now, not in 3 s
   const route = parseHash();
   state.route = route;
@@ -1607,6 +1926,7 @@ function render() {
     default: view.innerHTML = homeView();
   }
   renderTopbar(route);
+  renderSetTimer();                             // the ⏱ clock, when one is running in this workout's draft
   window.scrollTo(0, 0);
 }
 
@@ -1749,6 +2069,9 @@ async function handleAction(action, btn) {
       scheduleDraftSave();
       refreshTimerCard();
       break;
+    case 'set-timer': openSetTimer(btn.dataset.kind, btn); break;
+    case 'set-timer-end': closeSetTimer(true); break;
+    case 'set-timer-cancel': closeSetTimer(false); break;
     case 'swap': openSwapSheet(btn.dataset.slot); break;
     case 'pick-swap': applySwap(btn.dataset.slot, btn.dataset.exercise); break;
     case 'unswap': applySwap(btn.dataset.slot, null); break;
@@ -1781,6 +2104,17 @@ function bindViewEvents() {
       scheduleDraftSave();
       return;
     }
+    if (el instanceof HTMLInputElement && el.dataset.cardioField) {   // minutes / miles / kcal on a cardio line
+      const c = current.draft.cardio && current.draft.cardio[el.dataset.slot];
+      if (!c) return;
+      c[el.dataset.cardioField] = parseWeight(el.value);
+      c.touched = true;
+      const line = el.closest('.cardio-line');
+      if (line) line.querySelectorAll('.in-cardio').forEach(i => i.classList.remove('in-hint'));
+      markStarted(current.draft);
+      scheduleDraftSave();
+      return;
+    }
     if (!(el instanceof HTMLInputElement) || !el.dataset.key) return;
     const s = current.draft.sets[el.dataset.key];
     if (!s) return;
@@ -1790,6 +2124,25 @@ function bindViewEvents() {
     el.classList.remove('in-hint');                         // her number now, not a suggestion
     markStarted(current.draft);
     scheduleDraftSave();
+  });
+
+  view.addEventListener('change', e => {                    // the cardio machine dropdown
+    const el = e.target;
+    if (!current || !(el instanceof HTMLSelectElement) || !el.dataset.cardioMachine) return;
+    const slot = el.dataset.cardioMachine;
+    const c = current.draft.cardio && current.draft.cardio[slot];
+    if (!c) return;
+    c.machine = el.value;
+    const remembered = lsGet(LS.cardioLast, {});
+    remembered[slot] = c.machine;
+    lsSet(LS.cardioLast, remembered);
+    if (!c.touched) applyCardioPrefill(c, current.draft.date);   // not her numbers yet: pre-fill for the new machine
+    markStarted(current.draft);
+    saveDraft(current.draft);
+    scheduleAutosave();
+    const y = window.scrollY;                                    // redraw: "last time" and history follow the machine
+    render();
+    window.scrollTo(0, y);
   });
 
   view.addEventListener('focusin', e => {                   // tapping a field selects it: typing replaces, no backspacing
@@ -1821,6 +2174,18 @@ function bindViewEvents() {
         }
         refreshExerciseBadge(s.exercise);
         refreshSaveStatus();                                // "6 of 14 sets done" / "That's everything"
+      } else if (btn.dataset.cardioDone) {                   // the ✓ on a cardio line
+        const c = current.draft.cardio && current.draft.cardio[btn.dataset.cardioDone];
+        if (!c) return;
+        c.done = !c.done;
+        current.draft.checks[btn.dataset.cardioDone] = c.done;
+        btn.setAttribute('aria-pressed', c.done ? 'true' : 'false');
+        const line = btn.closest('.cardio-line');
+        if (line) {
+          line.classList.toggle('is-done', c.done);
+          line.querySelectorAll('.in-cardio').forEach(i => i.classList.toggle('in-hint', !c.done && !c.touched));
+        }
+        refreshSaveStatus();
       } else if (btn.dataset.check) {
         const on = !current.draft.checks[btn.dataset.check];
         current.draft.checks[btn.dataset.check] = on;
@@ -1836,6 +2201,7 @@ function bindViewEvents() {
   };
   view.addEventListener('click', onClick);
   document.getElementById('sheet').addEventListener('click', onClick);   // the swap picker lives outside #view
+  document.getElementById('timer-modal').addEventListener('click', onClick);   // so does the ⏱ clock
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 }
 
@@ -1873,6 +2239,7 @@ async function boot() {
       return;
     }
     flushQueue().then(rerenderIfPassive);
+    if (current && current.draft.setTimer) { requestWakeLock(); startSetTick(); }   // back to a running ⏱
     if (isStale()) refreshBootstrap().then(ok => { if (ok) rerenderIfPassive(); });
   });
   window.addEventListener('pagehide', () => { if (current && autosaveTimer) autosaveNow(); });

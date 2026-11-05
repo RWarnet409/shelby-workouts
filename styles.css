@@ -392,8 +392,69 @@ body.sheet-open { overflow: hidden; }
 .set-row.is-done .in { opacity: 0.7; }
 
 .check-line { display: flex; align-items: center; gap: 12px; min-height: 52px; }
-.check-text { display: flex; flex-direction: column; }
+.check-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
 .check-text .ex-target { white-space: normal; }
+.check-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.check-tools .ex-link.inline { padding: 8px 0; margin: 0; }
+.check-tools .ex-swapped { padding-left: 0; }
+.check-secs { color: var(--done); font-weight: 600; }
+
+/* ---- the ⏱ buttons: in a timed set row, on a stretch line, on a cardio line ---------- */
+.line-timer {
+  flex: 0 0 auto; width: var(--tap); height: var(--tap);
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--accent); font-size: 20px; line-height: 1;
+}
+.check-line .line-timer { margin-left: auto; }
+.in-timer {                                    /* "⏱ Start" where the weight box would be */
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border-style: dashed; background: transparent; color: var(--accent); font-size: 15px; font-weight: 600;
+}
+.set-row.is-done .in-timer { opacity: 0.7; }
+.set-label-timer {                             /* a timed set that also logs a weight: the label is the button */
+  border: 0; background: none; padding: 0; min-height: var(--tap);
+  color: var(--accent); font-weight: 700; font-size: 14px; text-align: left;
+}
+
+/* ---- cardio line: machine, minutes · miles · kcal ---------------------------- */
+.cardio-line { padding: 10px 0 8px; }
+.cardio-head { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) var(--tap); gap: 8px; align-items: center; }
+.in-select {
+  text-align: left; font-size: 16px; font-weight: 600; padding-right: 34px;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' fill='none' stroke='%236b7280' stroke-width='2'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.cardio-name { font-size: 17px; }
+.cardio-sub { margin: 6px 0 8px; font-size: 13px; color: var(--muted); }
+.cardio-sub .ex-history.inline { margin: 0; padding: 0; }
+.cardio-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cardio-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cardio-field .in { font-size: 17px; padding: 0 6px; }
+.cardio-line.is-done .in { opacity: 0.7; }
+.walk-btn { border-style: dashed; }
+.day-done .done-date { margin-left: auto; flex: 0 0 auto; font-size: 14px; font-weight: 700; white-space: nowrap; }
+
+/* ---- the ⏱ clock: full screen, one big number, one big End button ---------------- */
+#timer-modal {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(var(--safe-top) + 24px) 20px calc(var(--safe-bottom) + 24px);
+  background: var(--bg);
+}
+#timer-modal[hidden] { display: none; }
+.tm { width: 100%; max-width: 420px; text-align: center; }
+.tm-name { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.tm-sub { margin-top: 4px; font-size: 16px; color: var(--muted); }
+.tm-clock {
+  margin: 28px 0 6px; font-size: 92px; font-weight: 800; line-height: 1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--accent);
+}
+.tm-clock.hit { color: var(--done); }
+.tm-target { min-height: 22px; margin-bottom: 28px; font-size: 16px; color: var(--muted); }
+.tm-end { width: 100%; min-height: 76px; font-size: 26px; border-radius: 20px; }
+.tm-cancel { margin-top: 12px; }
+body.timer-open { overflow: hidden; }
 
 .savebar {
   position: fixed;

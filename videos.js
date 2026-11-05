@@ -130,4 +130,31 @@ export const VIDEOS = {
   'Air Bike Intervals': '',
   'Battle Ropes': 'battle ropes beginner how to',
   'Heavy Bag Rounds': 'heavy bag workout beginner basics',
+
+  // cardio machines (the dropdown on the warm-up / finisher lines) — no link
+  'Treadmill': '', 'Elliptical': '', 'Recumbent Bike': '', 'Spin Bike': '', 'Air Bike': '',
+  'Arm Bike': '', 'Outdoor Walk': '', 'Walk with Blu': '',
+
+  // the stretch block (and its swap options)
+  'Cat-Cow': 'cat cow stretch how to',
+  "Child's Pose": 'childs pose stretch how to',
+  'Sphinx Pose': 'sphinx pose lower back how to',
+  'Lying Spinal Twist': 'supine spinal twist stretch how to',
+  'Knee-to-Chest Stretch': 'knee to chest stretch lower back how to',
+  'Thread the Needle': 'thread the needle stretch how to',
+  'Seated Forward Fold': 'seated forward fold stretch beginner',
+  'Standing Side Bend': 'standing side bend stretch how to',
+  'Kneeling Hip Flexor Stretch': 'kneeling hip flexor stretch how to',
+  'Figure-4 Stretch': 'figure 4 stretch lying down how to',
+  'Lying Hamstring Stretch': 'lying hamstring stretch with strap how to',
+  'Standing Quad Stretch': 'standing quad stretch how to',
+  'Calf Stretch': 'wall calf stretch how to',
+  'Pigeon Pose': 'pigeon pose stretch beginner how to',
+  'Butterfly Stretch': 'butterfly stretch how to',
+  'Doorway Chest Stretch': 'doorway chest stretch how to',
+  'Cross-Body Shoulder Stretch': 'cross body shoulder stretch how to',
+  'Overhead Triceps Stretch': 'overhead triceps stretch how to',
+  'Neck Side Stretch': 'neck side stretch how to',
+  'Wrist Flexor Stretch': 'wrist flexor stretch how to',
+  'Clasped-Hands Upper Back Stretch': 'upper back stretch clasped hands how to',
 };

@@ -9,8 +9,9 @@ web/
   styles.css             mobile-first, 44px tap targets, safe-area padding, dark mode via prefers-color-scheme
   config.js              API_URL + TOKEN — copy from config.example.js. Committed in this deploy repo on purpose (GitHub Pages needs it; see docs/SPEC.md §8 in the project folder)
   config.example.js      template for config.js
-  program.json           copy of ../data/program.json: phase banners, week notes, cool-downs, and the
-                         offline / first-paint copy of the program (the Sheet's Program tab wins once loaded)
+  program.json           copy of ../data/program.json: phase banners, week notes, and the offline /
+                         first-paint copy of the program (the Sheet's Program tab wins once loaded; a day
+                         the Sheet lacks, like the Walk day, falls back to this copy)
   videos.js              the "▶ how to" lookup: exercise name → YouTube search phrase (or a specific video
                          URL, or '' for no link). Unlisted exercises search "<name> proper form"
   starting.js            the day-one weight hints: exercise name → "15–20" / "5" / "pin", shown faint in the
@@ -64,11 +65,19 @@ real `/exec` URL and token in `config.js` and it talks to the Sheet.
   bootstrap carries an `exercises` list, i.e. once the Sheet has the tab and the script is current.
 - Week lives on Home (stepper). After Day 4 of the current week is finished, Home offers "Start Week
   N+1" with one tap; after Day 3, the same offer appears when Day 1 is opened next.
+- **Cardio lines** (the warm-up, the finisher, the Walk day): a machine dropdown (the Exercises tab's
+  Cardio · Machine rows) and min / mi / kcal boxes. One Log row per line with the machine in
+  `exercise`, the Program slot in `swapped_from` and the numbers in `minutes` / `distance_mi` /
+  `calories`. **Walk with Blu** (the dashed card on Home) is a repeatable day with `day_id` `walk`:
+  each Finish writes a session (minutes, miles) and the card is ready for the next walk.
+- **The ⏱ clock**: timed sets, stretch holds and cardio lines open a full-screen clock; End writes
+  the elapsed time into the row and ticks it. The start time is in the draft, so a locked phone
+  comes back to the running clock.
 
 ## Changing the program
 
 Edit the `Program` tab in the Sheet; the app reflects it on the next open. `program.json` only
-supplies the phase banners, week notes and cool-down lines (and the offline fallback), so regenerate
+supplies the phase banners and week notes (and the offline fallback), so regenerate
 and re-copy it (`python reference/gen_package.py`, then copy `data/program.json` here) only when
 those change.
 

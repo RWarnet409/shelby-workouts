@@ -3,12 +3,12 @@
 // short wait or when offline. API calls go to another origin and are never touched here.
 // When deploying a change, bump VERSION so old caches get cleared.
 
-const VERSION = 'swa-v14';
+const VERSION = 'swa-v15';
 const SHELL = [
   './',
   './index.html',
-  './styles.css?v=14',
-  './app.js?v=14',
+  './styles.css?v=15',
+  './app.js?v=15',
   './config.js',
   './videos.js',
   './starting.js',

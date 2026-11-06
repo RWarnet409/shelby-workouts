@@ -15,7 +15,7 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '14';                      // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '15';                      // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const WALK_ID = 'walk';                        // "Walk with Blu": a repeatable day outside the 1 → 4 cycle
 const ALL_DAY_IDS = DAY_ORDER.concat(WALK_ID);
@@ -1977,6 +1977,8 @@ function render() {
   if (route.name !== 'workout') current = null;
   document.body.dataset.view = route.name;
   const view = document.getElementById('view');
+  const focused = document.activeElement;
+  if (focused && view.contains(focused)) focused.blur();   // a field about to be replaced: close the keyboard cleanly first (iOS)
   switch (route.name) {
     case 'workout': view.innerHTML = workoutView(route.dayId); break;
     case 'history': view.innerHTML = historyView(); break;
@@ -2290,6 +2292,31 @@ function bindViewEvents() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 }
 
+// ---- iOS: keep the top bar and the Finish bar on the screen edges -----------------------------
+// Both hang off the layout viewport (sticky / fixed). With the keyboard up, iOS slides the visible
+// area down inside that viewport instead of scrolling the page, and iOS 26/27 in a home-screen app
+// sometimes leaves it slid after the keyboard is gone: the top bar is then off the top and the
+// Finish bar floats mid-screen, moving as she scrolls (Shelby's recording, November 5, 2026;
+// https://developer.apple.com/forums/thread/800125). visualViewport.offsetTop is that slide;
+// styles.css moves everything screen-anchored by --vv-shift, so it lands on the real edges again.
+function pinBars() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  document.documentElement.style.setProperty('--vv-shift', Math.round(vv.offsetTop) + 'px');
+}
+function bindViewportEvents() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  vv.addEventListener('scroll', pinBars);
+  vv.addEventListener('resize', pinBars);
+  window.addEventListener('scroll', pinBars, { passive: true });
+  const settle = () => { pinBars(); setTimeout(pinBars, 120); setTimeout(pinBars, 450); };   // the keyboard animates in and out
+  document.addEventListener('focusin', settle);
+  document.addEventListener('focusout', settle);
+  document.addEventListener('visibilitychange', settle);
+  pinBars();
+}
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -2311,6 +2338,7 @@ async function boot() {
   shelveOldDrafts();                          // yesterday's unfinished workout → the "Finish it?" banner on Home
   state.queueCount = readQueue().length;
   bindViewEvents();
+  bindViewportEvents();
   render();
 
   window.addEventListener('hashchange', e => {

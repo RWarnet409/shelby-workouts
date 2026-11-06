@@ -22,6 +22,7 @@
   --tap: 44px;                                   /* minimum tap target */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --vv-shift: 0px;                               /* how far iOS has slid the visible area down inside the layout viewport (app.js pinBars) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -482,6 +483,15 @@ body.sheet-open { overflow: hidden; }
 .tm-cancel { margin-top: 12px; }
 body.timer-open { overflow: hidden; }
 
+/* ---- iOS keyboard: keep the bars on the screen edges --------------------------------------
+   The top bar (sticky) and the Finish bar (fixed) hang off the layout viewport. With the keyboard
+   up, iOS slides the visible area down inside that viewport instead of scrolling the page, and
+   iOS 26/27 in a home-screen app sometimes leaves it slid after the keyboard is gone: the top bar
+   is then off the top and the Finish bar floats mid-screen, moving as she scrolls. app.js measures
+   the slide (visualViewport.offsetTop) into --vv-shift; moving everything screen-anchored by it
+   puts it back on the real edges. The toast carries the same shift in its own transforms below. */
+.topbar, .savebar, #sheet, #timer-modal { transform: translateY(var(--vv-shift)); }
+
 .savebar {
   position: fixed;
   left: 0;
@@ -567,10 +577,10 @@ body.timer-open { overflow: hidden; }
   text-align: center;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-50%) translateY(16px);
+  transform: translateX(-50%) translateY(calc(var(--vv-shift) + 16px));
   transition: opacity 0.2s, transform 0.2s;
 }
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(var(--vv-shift)); }
 body[data-view="workout"] #toast { bottom: calc(var(--safe-bottom) + 104px); }
 
 /* ---- notes ----------------------------------------------------------- */

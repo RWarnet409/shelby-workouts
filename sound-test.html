@@ -26,7 +26,6 @@
     .btn { display: block; width: 100%; min-height: 56px; margin: 10px 0; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 14px;
            background: var(--accent); color: var(--ink); font: inherit; font-weight: 700; text-align: left; }
     .btn small { display: block; font-weight: 400; font-size: 13px; opacity: 0.85; }
-    .btn:disabled { opacity: 0.45; }
     .btn.ghost { background: var(--card); color: var(--accent); }
     #log { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; margin: 0; min-height: 60px; }
     .ok { color: #15803d; } .bad { color: #b91c1c; }
@@ -35,19 +34,18 @@
 </head>
 <body>
 <main>
-  <h1>Sound test for the ⏱ ding</h1>
+  <h1>Sound test for the ⏱ ding · round 2</h1>
   <p class="muted">Which way of making a sound works on this phone: with the ring/silent switch on silent, and without stopping the music.</p>
 
   <div class="card">
     <strong>How to run it</strong>
     <ol>
-      <li>Start music in Spotify (AirPods or speaker). Flip the side switch to <strong>silent</strong>.</li>
-      <li>Come back here and tap each button once. Each one should sound <strong>twice</strong>: right away, and again 5 seconds later (that second one is what the ⏱ clock would do). Keep this page on screen for those 5 seconds.</li>
-      <li>For each button note: heard it? Did the music keep going, dip for a moment, or stop?</li>
-      <li>Flip the switch to <strong>ring</strong> and tap them all again.</li>
-      <li>Optional: Share → Add to Home Screen, open it from the icon, and repeat. That is how Shelby runs the app.</li>
+      <li>Start music in Spotify (AirPods or speaker). Put the phone in <strong>silent</strong> mode.</li>
+      <li><strong>Reload this page before every button.</strong> Each button starts the sound engine fresh, but a reload keeps Safari from carrying anything over.</li>
+      <li>Tap a button. It should sound <strong>twice</strong>: right away, and again 5 seconds later (the second one is what the ⏱ clock would do). Keep this page on screen for those 5 seconds.</li>
+      <li>Note for each: heard it? Did Spotify keep going, dip for a moment, or stop?</li>
+      <li>When done, screenshot the log at the bottom (it includes the "This phone" line).</li>
     </ol>
-    <p class="muted">If the results start to look mixed up, reload the page between buttons.</p>
   </div>
 
   <div class="card">
@@ -55,11 +53,13 @@
     <p class="muted" id="info">…</p>
   </div>
 
-  <button type="button" class="btn" data-test="webaudio">A · Chime, generated in code<small>Web Audio, default sound session</small></button>
-  <button type="button" class="btn" data-test="transient">B · Same chime, told iOS it is a short alert<small>Web Audio with audioSession "transient"</small></button>
-  <button type="button" class="btn" data-test="playback">C · Same chime, told iOS it is media<small>Web Audio with audioSession "playback"</small></button>
-  <button type="button" class="btn" data-test="file">D · Chime from a sound file<small>an &lt;audio&gt; element, like a bundled .wav</small></button>
-  <button type="button" class="btn" data-test="speech">E · A voice saying "switch sides"<small>the phone's speech synthesizer</small></button>
+  <button type="button" class="btn" data-test="chime:auto">A · Chime made in code<small>Web Audio, default session</small></button>
+  <button type="button" class="btn" data-test="chime:transient">B · Chime made in code, as a short alert<small>Web Audio, session "transient", engine started after the setting</small></button>
+  <button type="button" class="btn" data-test="chime:playback">C · Chime made in code, as media<small>Web Audio, session "playback", engine started after the setting</small></button>
+  <button type="button" class="btn" data-test="file:auto">D · Chime from a sound file<small>an &lt;audio&gt; element, default session</small></button>
+  <button type="button" class="btn" data-test="file:transient">F · Chime from a sound file, as a short alert<small>an &lt;audio&gt; element, session "transient"</small></button>
+  <button type="button" class="btn" data-test="file:ambient">G · Chime from a sound file, as background sound<small>an &lt;audio&gt; element, session "ambient"</small></button>
+  <button type="button" class="btn ghost" data-test="speech">E · A voice saying "switch sides" (optional)<small>the phone's speech synthesizer</small></button>
   <button type="button" class="btn ghost" data-test="stop">Stop everything</button>
 
   <div class="card">
@@ -86,21 +86,26 @@
   const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
   const hasSession = 'audioSession' in navigator;
   const hasSpeech = 'speechSynthesis' in window;
-  document.getElementById('info').textContent =
-    (os ? 'iOS ' + os.replace(/_/g, '.') : 'not an iPhone, or the version is hidden') +
+  const info = (os ? 'iOS ' + os.replace(/_/g, '.') : 'not an iPhone, or the version is hidden') +
     ' · ' + (standalone ? 'opened from the Home Screen icon' : 'opened in a browser tab') +
     ' · audioSession API ' + (hasSession ? 'yes' : 'no') +
     ' · speech ' + (hasSpeech ? 'yes' : 'no');
+  document.getElementById('info').textContent = info;
 
-  // ---- A, B, C: a two-note chime made from oscillators (no file) -------------------------------
+  // ---- the sound session: what iOS is told the page's sound is ----------------------------------
+  function setSession(type) {
+    if (!hasSession) { log('audioSession API not on this phone; "' + type + '" ignored', type === 'auto' ? '' : 'bad'); return; }
+    try {
+      navigator.audioSession.type = type;
+      log('audioSession.type set to "' + type + '", reads back "' + navigator.audioSession.type + '", state "' + navigator.audioSession.state + '"');
+    } catch (e) { log('could not set audioSession.type: ' + e.message, 'bad'); }
+  }
+
+  // ---- A, B, C: a two-note chime made from oscillators (no file), a fresh engine every tap -------
   let ctx = null;
-  function getContext() {
-    if (!ctx) {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      ctx.onstatechange = () => log('audio context is now "' + ctx.state + '"');
-    }
-    if (ctx.state !== 'running') ctx.resume().then(() => log('audio context resumed → "' + ctx.state + '"'));
-    return ctx;
+  function closeContext() {
+    if (ctx) { try { ctx.close(); } catch (e) { /* ignore */ } }
+    ctx = null;
   }
   function chime(c) {
     const t0 = c.currentTime;
@@ -117,23 +122,22 @@
       o.stop(t0 + off + 0.55);
     });
   }
-  function setSession(type) {
-    if (!hasSession) { log('audioSession API not available here, using the default', 'bad'); return; }
-    try { navigator.audioSession.type = type; log('audioSession.type = "' + type + '"'); }
-    catch (e) { log('could not set audioSession.type: ' + e.message, 'bad'); }
-  }
   function runChime(label, sessionType) {
-    setSession(sessionType);
-    const c = getContext();
-    chime(c);
-    log(label + ': chime played now (context "' + c.state + '")', 'ok');
-    setTimeout(() => {
+    closeContext();
+    setSession(sessionType);                                 // before the engine exists, so it starts with this setting
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const c = ctx;
+    c.onstatechange = () => log(label + ': engine is now "' + c.state + '"');
+    const go = (when) => {
       chime(c);
-      log(label + ': chime played again 5 s later, from a timer (context "' + c.state + '")', 'ok');
-    }, 5000);
+      log(label + ': chime played ' + when + ' (engine "' + c.state + '")', 'ok');
+    };
+    if (c.state === 'running') go('now');
+    else c.resume().then(() => go('now')).catch(e => log(label + ': engine would not start: ' + e.message, 'bad'));
+    setTimeout(() => go('again 5 s later, from a timer'), 5000);
   }
 
-  // ---- D: the same chime rendered to a .wav and played through an <audio> element --------------
+  // ---- D, F, G: the same chime rendered to a .wav and played through an <audio> element ----------
   // The app would ship a real file; a generated one behaves the same way on iOS (it is "media").
   function wavUrl() {
     const rate = 22050, secs = 0.7, n = Math.floor(rate * secs);
@@ -155,16 +159,17 @@
     return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
   let audioEl = null;
-  function runFile() {
-    if (!audioEl) {
-      audioEl = new Audio(wavUrl());
-      audioEl.preload = 'auto';
-      audioEl.setAttribute('playsinline', '');
-    }
+  function runFile(label, sessionType) {
+    if (audioEl) { audioEl.pause(); }
+    setSession(sessionType);
+    audioEl = new Audio(wavUrl());
+    audioEl.preload = 'auto';
+    audioEl.setAttribute('playsinline', '');
+    const el = audioEl;
     const play = (when) => {
-      audioEl.currentTime = 0;
-      audioEl.play().then(() => log('D: file played ' + when, 'ok'))
-        .catch(e => log('D: play() refused ' + when + ': ' + e.message, 'bad'));
+      el.currentTime = 0;
+      el.play().then(() => log(label + ': file played ' + when, 'ok'))
+        .catch(e => log(label + ': play() refused ' + when + ': ' + e.message, 'bad'));
     };
     play('now');
     setTimeout(() => play('again 5 s later, from a timer'), 5000);
@@ -185,8 +190,7 @@
   }
 
   function stopAll() {
-    if (ctx) ctx.close().then(() => log('audio context closed'));
-    ctx = null;
+    closeContext();
     if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
     if (hasSpeech) window.speechSynthesis.cancel();
     if (hasSession) { try { navigator.audioSession.type = 'auto'; } catch (e) { /* ignore */ } }
@@ -195,17 +199,17 @@
 
   document.querySelectorAll('[data-test]').forEach(btn => {
     btn.addEventListener('click', () => {
-      switch (btn.dataset.test) {
-        case 'webaudio': runChime('A', 'auto'); break;
-        case 'transient': runChime('B', 'transient'); break;
-        case 'playback': runChime('C', 'playback'); break;
-        case 'file': runFile(); break;
-        case 'speech': runSpeech(); break;
-        case 'stop': stopAll(); break;
-      }
+      const [what, type] = btn.dataset.test.split(':');
+      const label = what === 'stop' ? 'Stop' : btn.textContent.trim().charAt(0);   // the letter on the button
+      log('— tapped ' + label + ' —');
+      if (what === 'chime') runChime(label, type);
+      else if (what === 'file') runFile(label, type);
+      else if (what === 'speech') runSpeech();
+      else stopAll();
     });
   });
-  log('ready — tap a button');
+  log(info);
+  log('ready — reload, then tap one button');
 })();
 </script>
 </body>

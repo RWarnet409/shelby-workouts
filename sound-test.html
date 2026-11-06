@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Sound test</title>
+  <!-- Add to Home Screen works, so the same test can be run the way Shelby runs the app -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sound test">
+  <meta name="theme-color" content="#0f766e">
+  <style>
+    :root { --bg: #f6f4ef; --card: #fff; --text: #1f2933; --muted: #6b7280; --line: #e4e0d7; --accent: #0f766e; --ink: #fff; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111417; --card: #1b1f24; --text: #eef0f2; --muted: #9aa3ad; --line: #2b323a; --accent: #2dd4bf; --ink: #06211e; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
+           font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--text); background: var(--bg); }
+    main { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    p { margin: 6px 0; }
+    .muted { color: var(--muted); font-size: 14px; }
+    ol { padding-left: 22px; margin: 8px 0; font-size: 15px; }
+    li { margin: 4px 0; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .btn { display: block; width: 100%; min-height: 56px; margin: 10px 0; padding: 8px 14px; border: 2px solid var(--accent); border-radius: 14px;
+           background: var(--accent); color: var(--ink); font: inherit; font-weight: 700; text-align: left; }
+    .btn small { display: block; font-weight: 400; font-size: 13px; opacity: 0.85; }
+    .btn:disabled { opacity: 0.45; }
+    .btn.ghost { background: var(--card); color: var(--accent); }
+    #log { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; margin: 0; min-height: 60px; }
+    .ok { color: #15803d; } .bad { color: #b91c1c; }
+    @media (prefers-color-scheme: dark) { .ok { color: #4ade80; } .bad { color: #f87171; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sound test for the ⏱ ding</h1>
+  <p class="muted">Which way of making a sound works on this phone: with the ring/silent switch on silent, and without stopping the music.</p>
+
+  <div class="card">
+    <strong>How to run it</strong>
+    <ol>
+      <li>Start music in Spotify (AirPods or speaker). Flip the side switch to <strong>silent</strong>.</li>
+      <li>Come back here and tap each button once. Each one should sound <strong>twice</strong>: right away, and again 5 seconds later (that second one is what the ⏱ clock would do). Keep this page on screen for those 5 seconds.</li>
+      <li>For each button note: heard it? Did the music keep going, dip for a moment, or stop?</li>
+      <li>Flip the switch to <strong>ring</strong> and tap them all again.</li>
+      <li>Optional: Share → Add to Home Screen, open it from the icon, and repeat. That is how Shelby runs the app.</li>
+    </ol>
+    <p class="muted">If the results start to look mixed up, reload the page between buttons.</p>
+  </div>
+
+  <div class="card">
+    <strong>This phone</strong>
+    <p class="muted" id="info">…</p>
+  </div>
+
+  <button type="button" class="btn" data-test="webaudio">A · Chime, generated in code<small>Web Audio, default sound session</small></button>
+  <button type="button" class="btn" data-test="transient">B · Same chime, told iOS it is a short alert<small>Web Audio with audioSession "transient"</small></button>
+  <button type="button" class="btn" data-test="playback">C · Same chime, told iOS it is media<small>Web Audio with audioSession "playback"</small></button>
+  <button type="button" class="btn" data-test="file">D · Chime from a sound file<small>an &lt;audio&gt; element, like a bundled .wav</small></button>
+  <button type="button" class="btn" data-test="speech">E · A voice saying "switch sides"<small>the phone's speech synthesizer</small></button>
+  <button type="button" class="btn ghost" data-test="stop">Stop everything</button>
+
+  <div class="card">
+    <strong>What the page did</strong> <span class="muted">(the newest line is at the top)</span>
+    <pre id="log"></pre>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const logEl = document.getElementById('log');
+  const lines = [];
+  function log(msg, cls) {
+    const t = new Date();
+    const stamp = String(t.getMinutes()).padStart(2, '0') + ':' + String(t.getSeconds()).padStart(2, '0');
+    lines.unshift('<span class="' + (cls || '') + '">' + stamp + '  ' + msg + '</span>');
+    logEl.innerHTML = lines.slice(0, 40).join('\n');
+  }
+
+  // ---- what this phone has --------------------------------------------------------------------
+  const ua = navigator.userAgent;
+  const os = (ua.match(/OS (\d+[_.]\d+(?:[_.]\d+)?)/) || [])[1];
+  const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const hasSession = 'audioSession' in navigator;
+  const hasSpeech = 'speechSynthesis' in window;
+  document.getElementById('info').textContent =
+    (os ? 'iOS ' + os.replace(/_/g, '.') : 'not an iPhone, or the version is hidden') +
+    ' · ' + (standalone ? 'opened from the Home Screen icon' : 'opened in a browser tab') +
+    ' · audioSession API ' + (hasSession ? 'yes' : 'no') +
+    ' · speech ' + (hasSpeech ? 'yes' : 'no');
+
+  // ---- A, B, C: a two-note chime made from oscillators (no file) -------------------------------
+  let ctx = null;
+  function getContext() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      ctx.onstatechange = () => log('audio context is now "' + ctx.state + '"');
+    }
+    if (ctx.state !== 'running') ctx.resume().then(() => log('audio context resumed → "' + ctx.state + '"'));
+    return ctx;
+  }
+  function chime(c) {
+    const t0 = c.currentTime;
+    [[880, 0], [1318.5, 0.16]].forEach(([freq, off]) => {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0 + off);
+      g.gain.exponentialRampToValueAtTime(0.5, t0 + off + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.5);
+      o.connect(g).connect(c.destination);
+      o.start(t0 + off);
+      o.stop(t0 + off + 0.55);
+    });
+  }
+  function setSession(type) {
+    if (!hasSession) { log('audioSession API not available here, using the default', 'bad'); return; }
+    try { navigator.audioSession.type = type; log('audioSession.type = "' + type + '"'); }
+    catch (e) { log('could not set audioSession.type: ' + e.message, 'bad'); }
+  }
+  function runChime(label, sessionType) {
+    setSession(sessionType);
+    const c = getContext();
+    chime(c);
+    log(label + ': chime played now (context "' + c.state + '")', 'ok');
+    setTimeout(() => {
+      chime(c);
+      log(label + ': chime played again 5 s later, from a timer (context "' + c.state + '")', 'ok');
+    }, 5000);
+  }
+
+  // ---- D: the same chime rendered to a .wav and played through an <audio> element --------------
+  // The app would ship a real file; a generated one behaves the same way on iOS (it is "media").
+  function wavUrl() {
+    const rate = 22050, secs = 0.7, n = Math.floor(rate * secs);
+    const pcm = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i / rate;
+      let v = Math.sin(2 * Math.PI * 880 * t) * Math.exp(-t * 9);
+      if (t >= 0.16) v += Math.sin(2 * Math.PI * 1318.5 * (t - 0.16)) * Math.exp(-(t - 0.16) * 6);
+      pcm[i] = Math.round(Math.max(-1, Math.min(1, v * 0.5)) * 32767);
+    }
+    const buf = new ArrayBuffer(44 + n * 2);
+    const dv = new DataView(buf);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, n * 2, true);
+    new Int16Array(buf, 44).set(pcm);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  let audioEl = null;
+  function runFile() {
+    if (!audioEl) {
+      audioEl = new Audio(wavUrl());
+      audioEl.preload = 'auto';
+      audioEl.setAttribute('playsinline', '');
+    }
+    const play = (when) => {
+      audioEl.currentTime = 0;
+      audioEl.play().then(() => log('D: file played ' + when, 'ok'))
+        .catch(e => log('D: play() refused ' + when + ': ' + e.message, 'bad'));
+    };
+    play('now');
+    setTimeout(() => play('again 5 s later, from a timer'), 5000);
+  }
+
+  // ---- E: the speech synthesizer ----------------------------------------------------------------
+  function runSpeech() {
+    if (!hasSpeech) { log('E: no speech synthesis on this phone', 'bad'); return; }
+    const say = (when) => {
+      const u = new SpeechSynthesisUtterance('Switch sides');
+      u.rate = 1;
+      u.onstart = () => log('E: speaking ' + when, 'ok');
+      u.onerror = e => log('E: speech error ' + when + ': ' + e.error, 'bad');
+      window.speechSynthesis.speak(u);
+    };
+    say('now');
+    setTimeout(() => say('again 5 s later, from a timer'), 5000);
+  }
+
+  function stopAll() {
+    if (ctx) ctx.close().then(() => log('audio context closed'));
+    ctx = null;
+    if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+    if (hasSpeech) window.speechSynthesis.cancel();
+    if (hasSession) { try { navigator.audioSession.type = 'auto'; } catch (e) { /* ignore */ } }
+    log('stopped; sound session back to "auto"');
+  }
+
+  document.querySelectorAll('[data-test]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      switch (btn.dataset.test) {
+        case 'webaudio': runChime('A', 'auto'); break;
+        case 'transient': runChime('B', 'transient'); break;
+        case 'playback': runChime('C', 'playback'); break;
+        case 'file': runFile(); break;
+        case 'speech': runSpeech(); break;
+        case 'stop': stopAll(); break;
+      }
+    });
+  });
+  log('ready — tap a button');
+})();
+</script>
+</body>
+</html>

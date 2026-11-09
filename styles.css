@@ -417,6 +417,9 @@ body.sheet-open { overflow: hidden; }
   background: var(--bg); color: var(--accent); font-size: 20px; line-height: 1;
 }
 .check-line .line-timer { margin-left: auto; }
+/* a block hint that names a rest ("A then B, rest 45–60 sec"): the hint, then a ⏱ at the right end of the line */
+.hint-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 6px; }
+.hint-row .hint { margin: 0; }
 .in-timer {                                    /* "⏱ Start" where the weight box would be */
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   border-style: dashed; background: transparent; color: var(--accent); font-size: 15px; font-weight: 600;

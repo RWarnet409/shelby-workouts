@@ -15,7 +15,7 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '15';                      // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '16';                      // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const WALK_ID = 'walk';                        // "Walk with Blu": a repeatable day outside the 1 → 4 cycle
 const ALL_DAY_IDS = DAY_ORDER.concat(WALK_ID);
@@ -996,9 +996,10 @@ function refreshTimerCard() {
 }
 
 // ---- the ⏱ clock ---------------------------------------------------------------------
-// One full-screen clock for a timed set (plank), a stretch hold or a cardio line. Start opens it;
-// End writes the elapsed time into the row (seconds, or minutes for cardio) and ticks it done; Cancel
-// logs nothing. The start time lives in the draft, so a locked phone reopens on the running clock.
+// One full-screen clock for a timed set (plank), a stretch hold, a cardio line or a rest between
+// rounds. Start opens it; End writes the elapsed time into the row (seconds, or minutes for cardio)
+// and ticks it done; Cancel logs nothing. A rest is only watched: End closes it and nothing is kept.
+// The start time lives in the draft, so a locked phone reopens on the running clock.
 let wakeLock = null;
 async function requestWakeLock() {
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { wakeLock = null; }
@@ -1027,6 +1028,8 @@ function openSetTimer(kind, btn) {
     if (!c || !row) return;
     const extra = (c.setNumber || 1) > 1;                   // an extra line has no target to turn green at
     spec = { kind, slot: btn.dataset.slot, label: c.machine, sub: extra ? 'Extra cardio' : '', target: extra ? '' : row.target };
+  } else if (kind === 'rest') {                             // the ⏱ on a block's "rest 45–60 sec" line: watched, never logged
+    spec = { kind, label: 'Rest', sub: btn.dataset.block, target: btn.dataset.target };
   }
   if (!spec) return;
   draft.setTimer = { ...spec, startedAt: localIso(new Date()) };
@@ -1076,7 +1079,8 @@ function renderSetTimer() {
     '<div class="tm-clock" id="tm-clock">' + fmtClock(setTimerElapsedMs()) + '</div>' +
     '<div class="tm-target">' + (t.target ? 'target ' + esc(t.target) : '') + '</div>' +
     '<button type="button" class="btn primary tm-end" data-action="set-timer-end">■ End</button>' +
-    '<button type="button" class="btn ghost tm-cancel" data-action="set-timer-cancel">Cancel — don\'t log it</button></div>';
+    (t.kind === 'rest' ? ''                                 // a rest logs nothing, so there is nothing to cancel
+      : '<button type="button" class="btn ghost tm-cancel" data-action="set-timer-cancel">Cancel — don\'t log it</button>') + '</div>';
   box.hidden = false;
   document.body.classList.add('timer-open');
   startSetTick();
@@ -1089,6 +1093,7 @@ function closeSetTimer(log) {
   const t = draft.setTimer;
   const ms = setTimerElapsedMs();
   draft.setTimer = null;
+  if (t.kind === 'rest') log = false;                       // a rest is for her eyes only: End just closes the clock
   if (log) {
     const secs = Math.max(1, Math.round(ms / 1000));
     if (t.kind === 'set') {
@@ -1487,8 +1492,15 @@ function blockCard(b, draft) {
     : b.block_type === 'stretch' ? 'Hold each one and breathe — the ⏱ times a hold for you'
     : b.block_type === 'walk' ? 'Minutes and miles. Start the timer at the door, or type them in after.'
     : '';
-  let html = '<section class="card block block-' + esc(b.block_type) + '"><h3>' + esc(b.block) + '</h3>' +
-    (hint ? '<p class="hint">' + esc(hint) + '</p>' : '');
+  // A hint that names a rest ("rest 45–60 sec") gets a ⏱ at the right end of its line. It opens the
+  // same full-screen clock, green at the low end of the rest, and logs nothing.
+  const rest = (hint.match(/rest (\d+(?:–\d+)? sec)/) || [])[1];
+  const hintLine = !hint ? ''
+    : !rest ? '<p class="hint">' + esc(hint) + '</p>'
+    : '<div class="hint-row"><p class="hint">' + esc(hint) + '</p>' +
+      '<button type="button" class="line-timer" data-action="set-timer" data-kind="rest" data-block="' + esc(b.block) + '"' +
+      ' data-target="' + esc(rest) + '" aria-label="Time the rest in ' + esc(b.block) + '">⏱</button></div>';
+  let html = '<section class="card block block-' + esc(b.block_type) + '"><h3>' + esc(b.block) + '</h3>' + hintLine;
   b.exercises.forEach(row => {
     if (n > 0) { html += exerciseSets(row, n, draft); return; }
     if (!isCardioRow(row, b)) { html += checkLine(row, b, draft); return; }

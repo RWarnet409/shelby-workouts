@@ -17,7 +17,7 @@ web/
   starting.js            the day-one weight hints: exercise name → "15–20" / "5" / "pin", shown faint in the
                          weight box until the exercise has a logged weight (from docs/PROGRAM.md's table)
   manifest.webmanifest   PWA manifest (docs/SPEC.md §7)
-  sw.js                  tiny service worker: network first, cached app shell when offline
+  sw.js                  tiny service worker: saved copy first (opens at once), refreshed in the background
   icons/                 icon.svg (source), icon-192.png, icon-512.png, apple-touch-icon.png (180×180 — iOS
                          needs PNG; regenerate the PNGs from the SVG with headless Chrome + System.Drawing)
 ```
@@ -34,12 +34,16 @@ real `/exec` URL and token in `config.js` and it talks to the Sheet.
 
 ## Deploying a change
 
-1. Bump the three version markers together so Safari and the service worker pick up the new files:
+1. Bump the version so Safari and the service worker pick up the new files. From the project
+   folder (one level up), `python tools/bump_version.py` raises it by one in all six places:
    `?v=` on `styles.css` and `app.js` in `index.html`, `VERSION` in `sw.js` (and the two `?v=` entries
-   in its `SHELL` list), and `APP_VERSION` in `app.js`. (`videos.js` and `starting.js` are in the
-   `SHELL` list too; bumping `VERSION` refreshes them.)
+   in its `SHELL` list), and `APP_VERSION` in `app.js`. `--check` only reports whether they agree.
+   (`videos.js` and `starting.js` are in the `SHELL` list too; bumping `VERSION` refreshes them.)
 2. Copy the folder to the host (re-drag to Netlify Drop, or push for GitHub Pages).
-3. On the phone, open the app once online; the next open uses the new version.
+3. On the phone, open the app once online. It opens from its saved copy (the old version), fetches
+   the new one in the background and reloads itself once to show it — a second or two later, and
+   only when she is not inside a workout (then the next open has it). Settings shows "app v…".
+   The local preview on `localhost` skips the service worker's cache, so an edit shows on reload.
 
 ## How the data flows (short version)
 

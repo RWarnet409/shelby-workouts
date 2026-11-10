@@ -39,7 +39,7 @@
       "main_sets": 4,
       "circuit_rounds": 3,
       "abs_rounds": 3,
-      "banner": "Phase 3 · Push (Weeks 5–6) — main lifts drop to 8–10 reps at a heavier weight, Superset 1 on upper days gets a 4th set, harder variations swap in. After Week 6: one light week, then restart at Week 3."
+      "banner": "Phase 3 · Push (Weeks 5–6) — main lifts drop to 8–10 reps at a heavier weight, Superset 1 on upper days gets a 4th set, harder variations swap in. After Week 6: one light week, then the Week 3–6 workouts again. The app lines them up — just keep starting the next week."
     }
   ],
   "week_notes": {
@@ -48,7 +48,7 @@
     "3": "Week 3: sets go up to 3. Use the Week 2 weights and go up only where you hit the top of the range every set.",
     "4": "Week 4: same as Week 3 — go up anywhere you hit the top of the range last week.",
     "5": "Week 5: reps drop, weight goes up on the main lifts. Expect to add 5 lb or one pin on those.",
-    "6": "Week 6: last push — match or beat Week 5 on every lift, then take a light week before starting over at Week 3."
+    "6": "Week 6: last push — match or beat Week 5 on every lift, then a light week and the Week 3 workouts again. Just tap Start Week 7 — never set the week back."
   },
   "days": [
     {

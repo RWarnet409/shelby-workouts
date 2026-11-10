@@ -15,7 +15,7 @@ import { VIDEOS } from './videos.js';          // exercise → YouTube search ph
 import { START_WEIGHTS } from './starting.js'; // exercise → day-one weight hint, shown faint in the weight box
 
 // ------------------------------------------------------------------------------- 1. config
-const APP_VERSION = '16';                      // keep in step with ?v= in index.html and VERSION in sw.js
+const APP_VERSION = '17';                     // keep in step with ?v= in index.html and VERSION in sw.js
 const DAY_ORDER = ['day1', 'day2', 'day3', 'day4'];
 const WALK_ID = 'walk';                        // "Walk with Blu": a repeatable day outside the 1 → 4 cycle
 const ALL_DAY_IDS = DAY_ORDER.concat(WALK_ID);
@@ -29,7 +29,6 @@ const LS = {
   programJson: 'swa.programJson',              // copy of program.json (phase banners, week notes, cool-downs)
   week: 'swa.week',                            // the week shown on Home, once it has been set by hand
   queue: 'swa.queue',                          // unsent POSTs: [{ id, action, sets | session, createdAt }]
-  dismissedSuggest: 'swa.dismissedSuggest',    // client_id of the session whose "next week?" banner was dismissed
   draftPrefix: 'swa.draft.',                   // + day_id → the workout in progress for that day
   stale: 'swa.stale',                          // drafts from another day that were started but never finished
   summary: 'swa.summary',                      // what the last Finish did (sets, minutes, weights that went up) until dismissed
@@ -92,8 +91,27 @@ export async function apiPost(body) {
 }
 
 // ------------------------------------------------------------------------------- 4. program helpers
+// After Week 6 the plan loops: one light week (Week 1's workouts), then the Week 3–6 workouts
+// again, then round again. The week number itself only ever counts up, so "done this week" never
+// collides with an earlier time through; programWeek() says which of the six program weeks to show.
+//   1–6 → 1–6 · 7 → light (1) · 8–11 → 3–6 · 12 → light (1) · 13–16 → 3–6 · …
+// isLightWeek_() in Code.gs is the same rule: keep the two in step.
+const LOOP_WEEKS = 5;                            // a light week + Weeks 3, 4, 5, 6
+function isLightWeek(week) { return week >= 7 && (week - 7) % LOOP_WEEKS === 0; }
+function programWeek(week) {
+  if (week <= 6) return Math.max(1, week);
+  const k = (week - 7) % LOOP_WEEKS;
+  return k === 0 ? 1 : k + 2;
+}
 function phaseForWeek(week) {
-  return week <= 2 ? 1 : week <= 4 ? 2 : 3;      // weeks 7+ keep using Phase 3
+  const pw = programWeek(week);
+  return pw <= 2 ? 1 : pw <= 4 ? 2 : 3;
+}
+// "Rebuild" / "Build" / "Push", or "Light week": the word after "Week n ·"
+function weekKind(week) {
+  if (isLightWeek(week)) return 'Light week';
+  const pi = phaseInfo(phaseForWeek(week));
+  return pi ? pi.name : 'Phase ' + phaseForWeek(week);
 }
 
 function phaseInfo(phase) {
@@ -103,12 +121,18 @@ function phaseInfo(phase) {
 
 function weekNote(week) {
   const notes = (state.programJson && state.programJson.week_notes) || {};
-  if (notes[String(week)]) return notes[String(week)];
-  if (week >= 7) {
-    return 'Week ' + week + ': the 6 weeks are done. Take one light week (Week 1 sets and weights), ' +
-      'then set the week back to 3 and restart with your Week 6 weights.';
+  if (week <= 6) return notes[String(week)] || '';
+  const w = 'Week ' + week + ': ';
+  if (isLightWeek(week)) {
+    return w + 'light week. These are the Week 1 workouts — drop every weight back to about what you ' +
+      'used in Week 1 ("history" shows it) and stop well short of hard. Next week goes back to building.';
   }
-  return '';
+  switch (programWeek(week)) {                   // the Week 3–6 workouts, another time through
+    case 3: return w + 'back to building. Use the weights from before the light week and go up only where you hit the top of the range every set.';
+    case 4: return w + 'same as last week — go up anywhere you hit the top of the range.';
+    case 5: return w + 'reps drop, weight goes up on the main lifts. Expect to add 5 lb or one pin on those.';
+    default: return w + 'last push of this round — match or beat last week on every lift, then a light week.';
+  }
 }
 
 // program.json → the same flat rows the Sheet's Program tab gives us. Used until the API has answered.
@@ -304,6 +328,7 @@ function lastBefore(name, date) {
 // Progression nudge (SPEC §5.2): last time every done set reached the top of the range → suggest more.
 function nudgeFor(row, date) {
   if (!row.log_weight) return null;
+  if (isLightWeek(state.week)) return null;                    // a light week is for going lighter, not up
   const le = lastBefore(row.exercise, date);
   if (!le || !Array.isArray(le.sets) || !le.sets.length) return null;
   const t = parseTarget(row.target);
@@ -368,6 +393,7 @@ const state = {
   sessions: [],             // most recent first
   exercises: [],            // the Exercises tab: swap library rows { exercise, body_part, category, target, ... }
   favorites: [],            // exercise names Shelby has starred (Favorites tab; latest row per exercise wins)
+  api: 0,                   // API_VERSION of the deployed Code.gs (0 = a script from before it sent one)
   week: 1,
   syncing: false,
   refreshing: false,
@@ -387,8 +413,15 @@ function applyBootstrap(b, source) {
   if (Array.isArray(b.sessions)) state.sessions = b.sessions;
   if (Array.isArray(b.exercises)) state.exercises = b.exercises;   // absent from the old script → keep what we have
   if (Array.isArray(b.favorites)) state.favorites = b.favorites;
+  if (source === 'api') state.api = Number(b.api) || 0;           // a fresh answer without it = the older script
+  else if (typeof b.api === 'number') state.api = b.api;
   if (b.fetchedAt) state.programUpdatedAt = b.fetchedAt;
 }
+
+// "Fix a number" on a past session appends correction rows that carry the session's own (older)
+// date. Only Code.gs with API_VERSION 2 or later keeps such a row from becoming "last time", so the
+// button stays hidden until that script is deployed. (Offline preview: no script, nothing to wait for.)
+function canFixSessions() { return !apiConfigured() || state.api >= 2; }
 
 // A fresh `last` from the sheet only knows the latest session per exercise. Keep the session before
 // it (from what this phone already had) as `prev`, so a refresh mid-workout doesn't turn "last time"
@@ -414,6 +447,7 @@ function persistBootstrapCache() {
     sessions: state.sessions,
     exercises: state.exercises,
     favorites: state.favorites,
+    api: state.api,
     fetchedAt: state.programUpdatedAt,
   });
 }
@@ -475,9 +509,13 @@ function queuedSetRows(match) {
 }
 
 // Mirror of lastPerExercise_() in Code.gs, applied to sets saved on this phone.
+// A light week's sets never become "last time": the week after it pre-fills from the heavy week
+// before it ("restart with the Week 6 weights").
 function applySetsToLast(sets) {
   sets.forEach(s => {
+    if (isLightWeek(Number(s.week))) return;
     const e = state.last[s.exercise] || (state.last[s.exercise] = { date: null, weight: null, reps: null, sets: [] });
+    if (e.date && s.date < e.date) return;                     // a correction to an older session ("Fix a number"): not "last time"
     if (e.date !== s.date) {                                   // a new session: remember the one before it
       if (e.date) {
         e.prev = { date: e.date, weight: e.weight, reps: e.reps, sets: e.sets || [],
@@ -575,22 +613,19 @@ function walksThisWeek() {
   return state.sessions.filter(x => x.day_id === WALK_ID && Number(x.week) === state.week && isTrue(x.completed));
 }
 
-// The day after the last completed session in the cycle 1 → 2 → 3 → 4 → 1. Days already done this
-// week (out of order) are skipped over, so next-up is always one still to do; once all four are
-// done it is the cycle's next day, i.e. where next week starts.
+// A week always starts with Day 1. After that it is the day after the last one completed this
+// week, in the cycle 1 → 2 → 3 → 4 → 1, skipping over days already done (out of order), so next-up
+// is always one still to do. With all four done there is nothing left: Home offers the next week.
 function nextUpDayId() {
-  const s = lastCompletedSession();
-  let next = 'day1';
-  if (s) {
-    const i = DAY_ORDER.indexOf(s.day_id);
-    next = i < 0 ? 'day1' : DAY_ORDER[(i + 1) % DAY_ORDER.length];
-  }
-  const start = DAY_ORDER.indexOf(next);
+  const s = state.sessions.find(x => x.day_id !== WALK_ID && Number(x.week) === state.week && isTrue(x.completed));
+  if (!s) return 'day1';
+  const i = DAY_ORDER.indexOf(s.day_id);
+  const start = i < 0 ? 0 : (i + 1) % DAY_ORDER.length;
   for (let k = 0; k < DAY_ORDER.length; k++) {
     const d = DAY_ORDER[(start + k) % DAY_ORDER.length];
     if (!doneThisWeek(d)) return d;
   }
-  return next;
+  return 'day1';
 }
 
 // The completed session for that day in the current week, or null.
@@ -610,20 +645,25 @@ function setWeek(week) {
   lsSet(LS.week, state.week);
 }
 
-// After Day 4 (or Day 3 when Day 1 is picked next) completes in the current week, offer the next week.
-function weekSuggestion(where, dayId) {
-  const s = lastCompletedSession();
-  if (!s || Number(s.week) !== state.week) return null;
-  if (lsGet(LS.dismissedSuggest, null) === s.client_id) return null;
-  const next = state.week + 1;
-  const onDay1 = where === 'workout' && dayId === 'day1';
-  if (s.day_id === 'day4' && (where === 'home' || onDay1)) {
-    return { next, sessionId: s.client_id, text: 'Week ' + state.week + ' done — nice. Ready for Week ' + next + '?' };
+// "Start Week n" (Home, always there). The week only moves when she says so. It goes straight
+// through when the week is complete (all four days, or all but the optional Day 4); otherwise it
+// asks first, because a stray tap would leave days behind or file a half-done workout under the
+// new week. "Change week" (−/+) still steps either way without asking.
+function startWeek(next) {
+  const left = DAY_ORDER.filter(d => !doneThisWeek(d));
+  const going = inProgressDraft();
+  let ask = '';
+  if (going) {
+    ask = dayMeta(going.dayId).day_label + ' is still in progress and would be logged under Week ' + next +
+      '. Start Week ' + next + ' anyway?';
+  } else if (left.length > 1 || (left.length === 1 && left[0] !== 'day4')) {
+    ask = 'Week ' + state.week + ' has ' + (DAY_ORDER.length - left.length) + ' of ' + DAY_ORDER.length +
+      ' days done. Start Week ' + next + ' anyway?';
   }
-  if (s.day_id === 'day3' && onDay1) {
-    return { next, sessionId: s.client_id, text: 'Back to Day 1? If Day 4 is skipped this week, this is Week ' + next + '.' };
-  }
-  return null;
+  if (ask && !window.confirm(ask)) return;
+  setWeek(next);
+  showToast('Week ' + next + ' · ' + weekKind(next));
+  render();
 }
 
 // ------------------------------------------------------------------------------- 6. drafts
@@ -707,6 +747,15 @@ function exerciseProgress(draft, row, n) {
   let done = 0;
   for (let i = 1; i <= n; i++) { const s = draft.sets[setKey(row.exercise, i)]; if (s && s.done) done++; }
   return { done, total: n };
+}
+// Is every set of this exercise ticked? (that is what folds it to one line)
+function exerciseAllDone(draft, workout, name) {
+  for (const b of workout.blocks) {
+    const n = b.sets === null ? 0 : Number(b.sets);
+    const row = n > 0 ? b.exercises.find(r => r.exercise === name) : null;
+    if (row) { const p = exerciseProgress(draft, row, n); return p.done >= p.total; }
+  }
+  return false;
 }
 
 // ---- abandoned drafts ---------------------------------------------------------------
@@ -1098,7 +1147,10 @@ function closeSetTimer(log) {
     const secs = Math.max(1, Math.round(ms / 1000));
     if (t.kind === 'set') {
       const s = draft.sets[t.key];
-      if (s) { s.reps = secs; s.touched = true; s.done = true; }
+      if (s) {
+        s.reps = secs; s.touched = true; s.done = true;
+        if (exerciseAllDone(draft, current.workout, s.exercise)) draft.collapsed[s.exercise] = true;   // last set timed: fold it, like a tick
+      }
     } else if (t.kind === 'check') {
       if (!draft.checkSecs) draft.checkSecs = {};
       draft.checkSecs[t.name] = secs;
@@ -1139,10 +1191,7 @@ function saveWorkout(draft, workout, finish, opts = {}) {
     enqueue({ action: 'logSets', sets });
     applySetsToLast(sets);
   }
-  if (finish && !draft.completed) {
-    draft.completed = true;
-    lsRemove(LS.dismissedSuggest);
-  }
+  if (finish && !draft.completed) draft.completed = true;
   if (draft.completed || (draft.timerStartedAt && draft.timerStoppedAt)) draft.durationMin = durationMinutes(draft, endedAt.getTime());
   const typed = v => v !== null && v !== undefined && v !== '';
   if (walk && typed(walk.minutes)) draft.durationMin = Number(walk.minutes);          // a typed walk time wins
@@ -1197,7 +1246,7 @@ function finishSummary(draft, workout) {
   const walk = draft.dayId === WALK_ID ? walkEntry(draft) : null;
   return { sessionId: draft.sessionClientId, dayId: draft.dayId, week: draft.week || state.week,
     durationMin: draft.durationMin || null, distanceMi: walk && walk.distance ? Number(walk.distance) : null,
-    done: p.done, total: p.total, ups };
+    done: p.done, total: p.total, ups, light: isLightWeek(draft.week || state.week) };
 }
 
 // ---- background save ------------------------------------------------------------------
@@ -1263,8 +1312,7 @@ function uuid() {
   });
 }
 function weekLabel() {
-  const pi = phaseInfo(phaseForWeek(state.week));
-  return 'Week ' + state.week + ' · ' + (pi ? pi.name : 'Phase ' + phaseForWeek(state.week));
+  return 'Week ' + state.week + ' · ' + weekKind(state.week);
 }
 function friendlyError(err) {
   if (err === 'unauthorized') return 'the script says the token is wrong';
@@ -1272,17 +1320,10 @@ function friendlyError(err) {
   return String(err || '').replace(/^Error:\s*/, '').slice(0, 120);
 }
 
-function suggestBanner(sug) {
-  return '<div class="suggest"><span>' + esc(sug.text) + '</span><span class="suggest-actions">' +
-    '<button type="button" class="btn small primary" data-action="accept-week" data-week="' + sug.next + '" data-sid="' + esc(sug.sessionId) + '">Start Week ' + sug.next + '</button>' +
-    '<button type="button" class="btn small ghost" data-action="dismiss-week" data-sid="' + esc(sug.sessionId) + '">Not yet</button>' +
-    '</span></div>';
-}
-
 // ---- Home ---------------------------------------------------------------------------
 function homeView() {
   const next = nextUpDayId();
-  const sug = weekSuggestion('home');
+  const nextWeek = state.week + 1;
   const pj = state.programJson || {};
   const rest = (pj.rest_days || ['Wednesday', 'Sunday']).join(' and ');
   const restNote = (pj.rest_day_note || 'Rest day — walk Blu.').replace(/^Rest day\s*[—-]\s*/i, '');
@@ -1292,6 +1333,8 @@ function homeView() {
   const going = inProgressDraft();                       // today's half-done workout, if any
   const bigId = going ? going.dayId : next;
   const todoIds = DAY_ORDER.filter(d => d !== bigId && !doneThisWeek(d));
+  const leftIds = DAY_ORDER.filter(d => !doneThisWeek(d));
+  const startBig = allDone && !going;                    // the week is complete: the big button starts the next one
 
   const dayButton = (dayId, big) => {
     const m = dayMeta(dayId);
@@ -1306,7 +1349,7 @@ function homeView() {
     }
     if (big) {
       return '<a class="next-up" href="#workout/' + dayId + '">' +
-        '<span class="eyebrow">' + (allDone ? 'Next week starts with' : 'Next up') + '</span>' +
+        '<span class="eyebrow">Next up</span>' +
         '<span class="big">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</span>' +
         '<span class="meta">~' + esc(m.minutes || '?') + ' min</span>' + optional +
         '</a>';
@@ -1328,13 +1371,23 @@ function homeView() {
   staleDrafts().forEach(d => { html += recoveryBanner(d); });
   const summary = lsGet(LS.summary, null);
   if (summary && !going) html += summaryCard(summary);
-  if (sug) html += suggestBanner(sug);
-  html += dayButton(bigId, true);
-  if (todoIds.length) {
-    html += '<p class="muted small" style="margin:14px 0 4px">' + (going ? 'Or pick another day:' : 'Or pick another day — slide, don\'t skip:') + '</p>';
-    todoIds.forEach(d => { html += dayButton(d, false); });
-  } else if (allDone && !going) {
-    html += '<p class="muted small" style="margin:14px 0 4px">All four days are done — rest up and start the next week when you\'re ready.</p>';
+  if (startBig) {
+    html += '<button type="button" class="next-up start-week" data-action="start-week" data-week="' + nextWeek + '">' +
+      '<span class="eyebrow">Week ' + state.week + ' done — all four days</span>' +
+      '<span class="big">Start Week ' + nextWeek + '</span>' +
+      '<span class="meta">' + esc(weekKind(nextWeek)) + ' · starts with Day 1</span></button>' +
+      '<p class="muted small" style="margin:14px 0 4px">Rest up, and start the next week when you\'re ready.</p>';
+  } else {
+    html += dayButton(bigId, true);
+    if (todoIds.length) {
+      html += '<p class="muted small" style="margin:14px 0 4px">' + (going ? 'Or pick another day:' : 'Or pick another day — slide, don\'t skip:') + '</p>';
+      todoIds.forEach(d => { html += dayButton(d, false); });
+    }
+    // "Start Week n" is always on Home: here as a quiet button, above as the big one once all four are done.
+    const skipDay4 = leftIds.length === 1 && leftIds[0] === 'day4';
+    html += '<div class="start-week-row">' +
+      (skipDay4 ? '<p class="muted small">Skipping Day 4 this week? That\'s fine — start the next one whenever you\'re ready.</p>' : '') +
+      '<button type="button" class="btn small ghost" data-action="start-week" data-week="' + nextWeek + '">Start Week ' + nextWeek + '</button></div>';
   }
   html += '<p class="rest-note">' + esc(rest) + ': rest — ' + esc(restNote) + '</p>';
   html += '<a class="day-btn walk-btn" href="#workout/' + WALK_ID + '">' +
@@ -1356,6 +1409,15 @@ function homeView() {
 // The bottom of Home: this week's completed days, checked off in green, with a line that scales
 // with the count ("three days is a win" is the program's own rule).
 // Each card carries its weekday and date ("Tue 11/04") on the right; walks with Blu list after the days.
+//
+// Where a Done card goes: today's own draft reopens the workout, so she can still fix a number. A
+// session from another day (or another phone) opens what was logged, read-only. Opening the
+// workout there would start a blank copy of the day, and a tick in it would log the day twice.
+function doneHref(s) {
+  const d = lsGet(draftKey(s.day_id), null);
+  if (d && d.date === todayIso() && d.sessionClientId === s.client_id) return '#workout/' + s.day_id;
+  return '#session/' + encodeURIComponent(s.client_id);
+}
 function doneSection(dayIds, walks) {
   const n = dayIds.length;
   const cheer = n >= 4 ? 'All four. A full week — nice work!'
@@ -1374,7 +1436,7 @@ function doneSection(dayIds, walks) {
   dayIds.forEach(d => {
     const s = doneThisWeek(d);
     const m = dayMeta(d);
-    html += card('#workout/' + d, '<strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus), s.duration_min ? s.duration_min + ' min' : '', s.date);
+    html += card(doneHref(s), '<strong>' + esc(m.day_label) + '</strong> · ' + esc(m.focus), s.duration_min ? s.duration_min + ' min' : '', s.date);
   });
   walks.forEach(s => {
     const bits = [];
@@ -1412,6 +1474,8 @@ function summaryCard(s) {
   if (s.ups && s.ups.length) {
     html += '<p class="summary-ups"><strong>Went up:</strong> ' +
       s.ups.map(u => esc(u.exercise) + ' ' + esc(fmtNum(u.from)) + ' → ' + esc(fmtNum(u.to)) + ' lb').join(', ') + '</p>';
+  } else if (s.light) {
+    html += '<p class="summary-ups muted">Light week — easy on purpose. Back to building next week.</p>';
   } else if (s.total) {
     html += '<p class="summary-ups muted">Same weights as last time — go up where every set hit the top of the range.</p>';
   }
@@ -1426,18 +1490,18 @@ function workoutView(dayId) {
   current = { draft, workout };
   const m = dayMeta(dayId);
   const pi = phaseInfo(phase);
-  const sug = weekSuggestion('workout', dayId);
 
   let html = '<section class="workout">' +
     '<h2 class="day-title">' + esc(m.day_label) + ' · ' + esc(m.focus) + '</h2>' +
     '<p class="day-sub">' + esc(weekLabel()) + (m.minutes ? ' · ~' + esc(m.minutes) + ' min' : '') + '</p>' +
     timerCard(draft);
   if (timerRunning(draft)) startTick(); else stopTick();
-  if (sug) html += suggestBanner(sug);
   if (dayId !== WALK_ID) {                      // a walk has no phase banner or week note
-    if (pi && pi.banner) {
-      const head = pi.banner.split(' — ')[0];
-      html += '<details class="banner"><summary>' + esc(head) + '</summary><p>' + esc(pi.banner) + '</p></details>';
+    if (pi && pi.banner && !isLightWeek(state.week)) {   // a light week borrows Phase 1's workouts, not its banner
+      // the second time through, "(Weeks 3–4)" in the banner would be the wrong weeks: drop it
+      const banner = state.week > 6 ? pi.banner.replace(/ \(Weeks [^)]*\)/, '') : pi.banner;
+      const head = banner.split(' — ')[0];
+      html += '<details class="banner"><summary>' + esc(head) + '</summary><p>' + esc(banner) + '</p></details>';
     }
     const wn = weekNote(state.week);
     if (wn) html += '<p class="week-note">' + esc(wn) + '</p>';
@@ -1607,6 +1671,36 @@ function refreshExerciseBadge(exerciseName) {
     if (old) old.outerHTML = exerciseBadge(draft, row, n);
     return;
   }
+}
+
+// Fold / unfold one exercise's rows (the › button, and the auto-fold below). Folds live in the draft.
+function setFolded(box, name, folded) {
+  box.classList.toggle('is-collapsed', folded);
+  const btn = box.querySelector('.ex-toggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    btn.setAttribute('aria-label', (folded ? 'Show' : 'Hide') + ' the sets for ' + name);
+  }
+  if (!current) return;
+  if (!current.draft.collapsed) current.draft.collapsed = {};
+  if (folded) current.draft.collapsed[name] = true; else delete current.draft.collapsed[name];
+  saveDraft(current.draft);
+}
+
+// Ticking the last set of an exercise folds it to one line a moment later, so the next exercise
+// moves up under her thumb. The pause lets her see the tick land; an un-tick in that moment calls
+// it off. A field of that exercise that still has the keyboard is closed first (iOS keeps a field
+// focused when a button is tapped). › opens it again, and it stays open until the next last tick.
+const AUTO_FOLD_MS = 700;
+function foldWhenAllDone(name) {
+  setTimeout(() => {
+    if (!current || !exerciseAllDone(current.draft, current.workout, name)) return;
+    const box = document.querySelector('.exercise[data-exercise="' + CSS.escape(name) + '"]');
+    if (!box || box.classList.contains('is-collapsed')) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLInputElement && box.contains(focused)) focused.blur();
+    setFolded(box, name, true);
+  }, AUTO_FOLD_MS);
 }
 
 // A single line with a tick: warm-up moves and the stretch block. Timed lines (unit = time) get a ⏱
@@ -1784,6 +1878,10 @@ function sessionView(id) {
     '<div id="session-sets"><p class="muted">Loading sets…</p></div></section>';
 }
 
+// The session on screen (History → a session, or a Done card): its Log rows as loaded, and whether
+// "Fix a number" is open. Cleared when she leaves the screen.
+let sessionCtx = null;      // { session, rows, note, editing }
+
 async function loadSessionSets(route, s) {
   let note = '';
   let serverRows = [];
@@ -1799,8 +1897,12 @@ async function loadSessionSets(route, s) {
   }
   if (state.route !== route) return;                 // user moved on
   const localRows = queuedSetRows(r => r.date === s.date && r.day_id === s.day_id);
+  sessionCtx = { session: s, rows: serverRows.concat(localRows), note, editing: false };
+  drawSessionSets();
+}
+function drawSessionSets() {
   const box = document.getElementById('session-sets');
-  if (box) box.innerHTML = renderSessionSets(s, serverRows.concat(localRows), note);
+  if (box && sessionCtx) box.innerHTML = renderSessionSets(sessionCtx.session, sessionCtx.rows, sessionCtx.note, sessionCtx.editing);
 }
 
 function setText(s, row, unit) {
@@ -1815,12 +1917,17 @@ function setText(s, row, unit) {
   return parts.join(' × ');
 }
 
-function renderSessionSets(session, rows, note) {
+const hasValue = v => v !== '' && v !== null && v !== undefined;
+const isExtraCardio = s => String(s.note || '').trim() === 'extra cardio';      // "+ Add cardio" rows
+
+// A session's Log rows grouped per exercise, in the workout's order; the latest row per set wins
+// (that is how a correction replaces the row it corrects).
+function groupSessionRows(session, rows) {
   const latest = new Map();                                   // "exercise|set" → row; later rows win
   rows.forEach(r => latest.set(setKey(r.exercise, Number(r.set_number) || 1), r));
   const phase = Number(session.phase) || phaseForWeek(Number(session.week) || 1);
-  const order = [];
-  workoutFor(phase, session.day_id).blocks.forEach(b => b.exercises.forEach(e => order.push(e)));
+  const blocks = workoutFor(phase, session.day_id).blocks;
+  const order = blocks.flatMap(b => b.exercises);
   const byExercise = new Map();
   latest.forEach(r => {
     if (!byExercise.has(r.exercise)) byExercise.set(r.exercise, []);
@@ -1828,21 +1935,148 @@ function renderSessionSets(session, rows, note) {
   });
   const names = order.map(e => e.exercise).filter(n => byExercise.has(n))
     .concat([...byExercise.keys()].filter(n => !order.some(e => e.exercise === n)));
-  if (!names.length) return '<p class="muted">' + esc(note || 'No sets were logged for this session.') + '</p>';
-  let html = names.map(n => {
-    const row = order.find(e => e.exercise === n);
-    const unit = unitLabel(row ? row.unit : 'reps');
-    const sets = byExercise.get(n).sort((a, b) => Number(a.set_number) - Number(b.set_number));
+  return names.map(name => {
+    const sets = byExercise.get(name).sort((a, b) => Number(a.set_number) - Number(b.set_number));
     const swappedFrom = String(sets[0].swapped_from || '').trim();
-    const isExtra = s => String(s.note || '').trim() === 'extra cardio';      // "+ Add cardio" rows
-    const label = sets.every(isExtra) ? 'extra cardio' : swappedFrom ? 'in place of ' + swappedFrom : '';
-    return '<div class="card"><h3>' + esc(n) +
-      (label ? ' <span class="muted small">' + esc(label) + '</span>' : '') + '</h3>' + sets.map(s =>
-      '<div class="set-line"><span>' + (isExtra(s) ? 'Extra' : 'Set ' + esc(s.set_number)) + '</span><span>' + esc(setText(s, row, unit)) + '</span>' +
-      '<span class="tick">' + (isTrue(s.done) ? '✓' : '') + '</span></div>').join('') + '</div>';
+    const inSlot = e => e.exercise === name || (swappedFrom !== '' && e.exercise === swappedFrom);
+    const block = blocks.find(b => b.exercises.some(inSlot)) || null;        // the Program block this exercise sat in
+    const info = order.find(e => e.exercise === name) || libraryRow(name);  // unit and weight flag: Program, else the library
+    return {
+      name, sets, swappedFrom, info,
+      planned: block && block.sets ? Number(block.sets) : 0,                 // sets the Program has for it (0 = a check line)
+      cardio: sets.some(hasCardioNumbers) || sets.some(isExtraCardio) || session.day_id === WALK_ID ||
+        !!(block && block.exercises.some(e => inSlot(e) && isCardioRow(e, block))),
+    };
+  });
+}
+
+function renderSessionSets(session, rows, note, editing) {
+  const groups = groupSessionRows(session, rows);
+  if (!groups.length) return '<p class="muted">' + esc(note || 'No sets were logged for this session.') + '</p>';
+  let html = editing
+    ? '<p class="edit-hint">Change what\'s wrong, then tap Save changes. Next time\'s numbers follow the fix.</p>'
+    : '';
+  html += groups.map(g => {
+    const unit = unitLabel(g.info ? g.info.unit : 'reps');
+    const label = g.sets.every(isExtraCardio) ? 'extra cardio' : g.swappedFrom ? 'in place of ' + g.swappedFrom : '';
+    const lines = () => g.sets.map(s =>
+      '<div class="set-line"><span>' + (isExtraCardio(s) ? 'Extra' : 'Set ' + esc(s.set_number)) + '</span><span>' + esc(setText(s, g.info, unit)) + '</span>' +
+      '<span class="tick">' + (isTrue(s.done) ? '✓' : '') + '</span></div>').join('');
+    return '<div class="card"><h3>' + esc(g.name) +
+      (label ? ' <span class="muted small">' + esc(label) + '</span>' : '') + '</h3>' +
+      (editing ? (fixRows(g, unit) || lines()) : lines()) + '</div>';
   }).join('');
   if (note) html += '<p class="muted small">' + esc(note) + '</p>';
+  if (editing) {
+    html += '<div class="edit-actions"><button type="button" class="btn primary" data-action="session-save">Save changes</button>' +
+      '<button type="button" class="btn ghost" data-action="session-cancel">Cancel</button></div>';
+  } else if (canFixSession(session)) {
+    html += '<button type="button" class="btn ghost fix-btn" data-action="session-edit">Fix a number</button>';
+  }
   return html;
+}
+
+// ---- "Fix a number": correcting a past session ---------------------------------------------
+// The Log is append-only, so a fix is a new row for the same (date, day, exercise, set) and the
+// latest row wins. Nothing is rewritten in the sheet; the old row stays above the new one, and the
+// new one says "correction" in its note column.
+//
+// Not offered when two sessions share a date and a day (two walks in one day): their rows cannot
+// be told apart, so a fix to one would also change the other.
+function canFixSession(s) {
+  if (!canFixSessions()) return false;
+  return !state.sessions.some(x => x.client_id !== s.client_id && x.date === s.date && x.day_id === s.day_id);
+}
+
+// The editable rows for one exercise, or '' when there is nothing to fix on it (a warm-up move or
+// stretch that was only ticked). A lift shows every set the Program has for it, logged or not, so a
+// set she did but never ticked can be added.
+function fixRows(g, unit) {
+  const attrs = n => ' data-edit-ex="' + esc(g.name) + '" data-edit-set="' + n + '"';
+  const val = v => esc(!hasValue(v) ? '' : typeof v === 'number' ? fmtNum(v) : v);
+  if (g.cardio) {
+    const field = (name, value, u, mode, label) =>
+      '<label class="cardio-field"><input class="in in-cardio" type="text" inputmode="' + mode + '" autocomplete="off" enterkeyhint="next"' +
+      ' value="' + val(value) + '" data-f="' + name + '" aria-label="' + esc(g.name) + ' ' + label + '"><span class="unit">' + u + '</span></label>';
+    return g.sets.map(s =>
+      '<div class="edit-row edit-cardio"' + attrs(Number(s.set_number) || 1) + '>' +
+      (isExtraCardio(s) ? '<span class="set-label">Extra</span>' : '') +
+      '<div class="cardio-fields">' + field('minutes', s.minutes, 'min', 'decimal', 'minutes') +
+      field('distance', s.distance_mi, 'mi', 'decimal', 'miles') + field('calories', s.calories, 'kcal', 'numeric', 'calories') + '</div></div>').join('');
+  }
+  if (!g.planned && !g.sets.some(s => hasValue(s.weight) || hasValue(s.reps))) return '';
+  const weighted = g.sets.some(s => hasValue(s.weight)) || !!(g.info && g.info.log_weight);
+  const count = Math.max(g.planned, ...g.sets.map(s => Number(s.set_number) || 1));
+  let html = '';
+  for (let n = 1; n <= count; n++) {
+    const s = g.sets.find(x => (Number(x.set_number) || 1) === n) || {};
+    const done = isTrue(s.done);
+    const label = esc(g.name) + ' set ' + n;
+    html += '<div class="set-row edit-row' + (done ? ' is-done' : '') + '"' + attrs(n) + '><span class="set-label">Set ' + n + '</span>' +
+      (weighted
+        ? '<input class="in in-weight" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" value="' + val(s.weight) + '" data-f="weight" aria-label="' + label + ' weight"><span class="unit">lb</span>'
+        : '<span class="in in-bw" title="bodyweight">BW</span><span class="unit"></span>') +
+      '<input class="in in-reps" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next" value="' + val(s.reps) + '" data-f="reps" aria-label="' + label + ' ' + esc(unit) + '">' +
+      '<span class="unit">' + esc(unit) + '</span>' +
+      '<button type="button" class="done" data-action="edit-tick" aria-pressed="' + (done ? 'true' : 'false') + '" aria-label="' + label + ' done">✓</button></div>';
+  }
+  return html;
+}
+
+// Save changes: one correction row per set that differs from what was logged, queued like any save.
+function saveSessionFix() {
+  if (!sessionCtx) return;
+  const s = sessionCtx.session;
+  const groups = groupSessionRows(s, sessionCtx.rows);
+  const same = (a, b) => (hasValue(a) ? String(a) : '') === (hasValue(b) ? String(b) : '');
+  const num = v => (hasValue(v) && !isNaN(Number(v)) ? Number(v) : null);
+  const out = [];
+  document.querySelectorAll('#session-sets .edit-row').forEach(el => {
+    const g = groups.find(x => x.name === el.dataset.editEx);
+    if (!g) return;
+    const n = Number(el.dataset.editSet);
+    const orig = g.sets.find(x => (Number(x.set_number) || 1) === n) || null;
+    const typed = f => { const i = el.querySelector('[data-f="' + f + '"]'); return i ? i.value : ''; };
+    const from = orig || g.sets[0];                            // a set added now takes its week and phase from its neighbours
+    const base = { client_id: uuid(), date: s.date, week: num(from.week) || num(s.week), phase: num(from.phase) || num(s.phase),
+      day_id: s.day_id, exercise: g.name, swapped_from: g.swappedFrom, set_number: n };
+    if (el.classList.contains('edit-cardio')) {
+      const mins = parseWeight(typed('minutes')), dist = parseWeight(typed('distance')), kcal = parseWeight(typed('calories'));
+      if (orig && same(mins, orig.minutes) && same(dist, orig.distance_mi) && same(kcal, orig.calories)) return;
+      out.push({ ...base, weight: null, reps: null, minutes: mins, distance_mi: dist, calories: kcal,
+        done: orig ? isTrue(orig.done) : true, note: orig && isExtraCardio(orig) ? 'extra cardio' : 'correction' });
+      return;
+    }
+    const weighted = !!el.querySelector('[data-f="weight"]');
+    const weight = weighted ? parseWeight(typed('weight')) : null;
+    const reps = parseReps(typed('reps'));
+    const done = el.querySelector('.done').getAttribute('aria-pressed') === 'true';
+    const unchanged = orig
+      ? same(weight, weighted ? orig.weight : null) && same(reps, orig.reps) && done === isTrue(orig.done)
+      : !done && weight === null && reps === null;             // a set that was never logged and still is empty
+    if (!unchanged) out.push({ ...base, weight, reps, done, note: 'correction' });
+  });
+  sessionCtx.editing = false;
+  if (!out.length) { drawSessionSets(); showToast('Nothing was changed'); return; }
+  enqueue({ action: 'logSets', sets: out });
+  applySetsToLast(out);                                        // "last time" follows, when this is still the latest session
+  sessionCtx.rows = sessionCtx.rows.concat(out);
+  // A walk's minutes and miles also sit on its Sessions row (the Done card and History read them there).
+  const walk = s.day_id === WALK_ID ? out.find(x => x.set_number === 1 && x.note !== 'extra cardio') : null;
+  if (walk) {
+    const fixed = { client_id: s.client_id, date: s.date, week: num(s.week), phase: num(s.phase), day_id: s.day_id,
+      completed: isTrue(s.completed), duration_min: walk.minutes !== null ? walk.minutes : num(s.duration_min),
+      note: String(s.note || ''), timer_start: s.timer_start || '', timer_end: s.timer_end || '', distance_mi: walk.distance_mi };
+    enqueueSession(fixed);
+    const kept = { ...fixed, timestamp: s.timestamp };
+    state.sessions = state.sessions.map(x => (x.client_id === s.client_id ? kept : x));
+    sessionCtx.session = kept;
+  }
+  persistBootstrapCache();
+  document.getElementById('view').innerHTML = sessionView(s.client_id);   // the header carries a walk's minutes and miles
+  drawSessionSets();
+  showToast(out.length === 1 ? 'Fixed ✓' : out.length + ' sets fixed ✓');
+  flushQueue();
 }
 
 // ---- Exercise history ---------------------------------------------------------------
@@ -1912,6 +2146,8 @@ function settingsView() {
        : 'Everything is saved to the sheet.') + '</p>' +
     '<button type="button" class="btn ghost" data-action="retry-sync"' + (q ? '' : ' disabled') + '>Retry queued saves (' + q + ')</button></div>' +
     '<div class="card"><h3>Program</h3><p class="muted">' + esc(programText) + '</p><p class="muted">' + esc(libText) + '</p>' +
+    (canFixSessions() ? '' : '<p class="muted">The script in the sheet is an older version. Deploy the latest Code.gs to turn on ' +
+      '"Fix a number" in History.</p>') +
     '<button type="button" class="btn ghost" data-action="reload-program"' + (apiConfigured() ? '' : ' disabled') + '>Reload from the sheet</button></div>' +
     '<p class="muted small" style="text-align:center">Shelby\'s Workouts · app v' + APP_VERSION + '</p>' +
     '</section>';
@@ -1966,8 +2202,9 @@ function renderTopbar(route) {
       left.innerHTML = back('#', 'Home'); title.textContent = weekLabel(); right.innerHTML = historyLink; break;
     case 'history':
       left.innerHTML = back('#', 'Home'); title.textContent = 'History'; right.innerHTML = ''; break;
-    case 'session':
-      left.innerHTML = back('#history', 'History'); title.textContent = 'Session'; right.innerHTML = ''; break;
+    case 'session':                               // back to where she came from: History, or Home (a Done card)
+      left.innerHTML = state.prevHash === '#history' ? back('#history', 'History') : back('#', 'Home');
+      title.textContent = 'Session'; right.innerHTML = ''; break;
     case 'exercise': {
       const from = state.prevHash && state.prevHash.startsWith('#workout/') ? state.prevHash : '#';
       left.innerHTML = back(from, 'Back'); title.textContent = 'Exercise'; right.innerHTML = ''; break;
@@ -1987,6 +2224,7 @@ function render() {
   const route = parseHash();
   state.route = route;
   if (route.name !== 'workout') current = null;
+  sessionCtx = null;                            // the Session view loads its own again
   document.body.dataset.view = route.name;
   const view = document.getElementById('view');
   const focused = document.activeElement;
@@ -2027,6 +2265,18 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
+// A weight typed on one set carries down to the later sets of that exercise she hasn't touched or
+// ticked, so going from 15 to 20 lb is one edit, not one per set. Those sets stay faint (still a
+// suggestion) and are only logged when she ticks them. Reps are never carried: they differ by set.
+function carryWeightDown(draft, s) {
+  Object.values(draft.sets).forEach(o => {
+    if (o.exercise !== s.exercise || !(Number(o.set_number) > Number(s.set_number)) || o.done || o.touched) return;
+    o.weight = s.weight;
+    const box = document.querySelector('input[data-field="weight"][data-key="' + CSS.escape(setKey(o.exercise, o.set_number)) + '"]');
+    if (box) box.value = fmtNum(o.weight);
+  });
+}
+
 function parseWeight(value) {
   const v = String(value).trim().replace(',', '.');
   if (v === '') return null;
@@ -2045,7 +2295,13 @@ function onFinish() {
   if (!current) return;
   const { draft, workout } = current;
   const anyDone = Object.values(draft.sets).some(s => s.done) || Object.values(draft.checks).some(Boolean);
-  if (!anyDone && !window.confirm('No sets are marked done yet. Finish this workout anyway?')) return;
+  const p = setProgress(draft, workout);
+  const left = p.total - p.done;
+  if (!anyDone) {
+    if (!window.confirm('No sets are marked done yet. Finish this workout anyway?')) return;
+  } else if (left > 0 && !draft.completed) {               // a stray tap on the big button shouldn't end a half-done workout
+    if (!window.confirm(left + ' of ' + p.total + ' sets aren\'t ticked yet. Finish this workout anyway?')) return;
+  }
   clearTimeout(autosaveTimer);
   autosaveTimer = null;
   saveWorkout(draft, workout, true);
@@ -2078,29 +2334,32 @@ async function handleAction(action, btn) {
     case 'dismiss-summary': lsRemove(LS.summary); render(); break;
     case 'toggle-ex': {                         // fold / unfold one exercise's set rows
       if (!current) break;
-      const name = btn.dataset.exercise;
       const box = btn.closest('.exercise');
-      if (!box) break;
-      const folded = !box.classList.contains('is-collapsed');
-      box.classList.toggle('is-collapsed', folded);
-      btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
-      btn.setAttribute('aria-label', (folded ? 'Show' : 'Hide') + ' the sets for ' + name);
-      if (!current.draft.collapsed) current.draft.collapsed = {};
-      if (folded) current.draft.collapsed[name] = true; else delete current.draft.collapsed[name];
-      saveDraft(current.draft);
+      if (box) setFolded(box, btn.dataset.exercise, !box.classList.contains('is-collapsed'));
       break;
     }
     case 'week-minus': setWeek(state.week - 1); render(); break;
     case 'week-plus': setWeek(state.week + 1); render(); break;
-    case 'accept-week':
-      setWeek(Number(btn.dataset.week));
-      lsSet(LS.dismissedSuggest, btn.dataset.sid);
-      render();
+    case 'start-week': startWeek(Number(btn.dataset.week)); break;
+    case 'session-edit': {                      // "Fix a number" on a session
+      if (!sessionCtx) break;
+      const href = doneHref(sessionCtx.session);
+      if (href.startsWith('#workout/')) { location.hash = href; break; }   // today's workout is still open: fix it there
+      sessionCtx.editing = true;
+      drawSessionSets();
       break;
-    case 'dismiss-week':
-      lsSet(LS.dismissedSuggest, btn.dataset.sid);
-      render();
+    }
+    case 'session-cancel':
+      if (sessionCtx) { sessionCtx.editing = false; drawSessionSets(); }
       break;
+    case 'session-save': saveSessionFix(); break;
+    case 'edit-tick': {                         // the ✓ on a row being fixed: read back on Save
+      const on = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const row = btn.closest('.set-row');
+      if (row) row.classList.toggle('is-done', on);
+      break;
+    }
     case 'retry-sync':
       showToast('Syncing…');
       await flushQueue();
@@ -2217,7 +2476,7 @@ function bindViewEvents() {
     if (!(el instanceof HTMLInputElement) || !el.dataset.key) return;
     const s = current.draft.sets[el.dataset.key];
     if (!s) return;
-    if (el.dataset.field === 'weight') s.weight = parseWeight(el.value);
+    if (el.dataset.field === 'weight') { s.weight = parseWeight(el.value); carryWeightDown(current.draft, s); }
     else s.reps = parseReps(el.value);
     s.touched = true;
     el.classList.remove('in-hint');                         // her number now, not a suggestion
@@ -2273,6 +2532,7 @@ function bindViewEvents() {
         }
         refreshExerciseBadge(s.exercise);
         refreshSaveStatus();                                // "6 of 14 sets done" / "That's everything"
+        if (s.done) foldWhenAllDone(s.exercise);            // the exercise's last tick folds it away
       } else if (btn.dataset.cardioDone) {                   // the ✓ on a cardio line
         const c = current.draft.cardio && current.draft.cardio[btn.dataset.cardioDone];
         if (!c) return;
@@ -2333,6 +2593,16 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   if (location.protocol !== 'https:' && !local) return;
+  // sw.js answers from its saved copy first, so after a deploy this page is still the old version.
+  // When the new worker takes over (its cache now holds the new files), reload once to show it —
+  // but never under a workout: there the next open has it. The first install has nothing newer.
+  const hadWorker = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadWorker || reloaded || state.route.name === 'workout') return;
+    reloaded = true;
+    location.reload();
+  });
   navigator.serviceWorker.register('./sw.js').catch(e => console.warn('service worker not registered', e));
 }
 
@@ -2376,7 +2646,8 @@ async function boot() {
   const ok = await refreshBootstrap();
   if (ok) {
     if (lsGet(LS.week, null) === null) initWeek();
-    if (state.route.name !== 'workout' || !current) render(); else renderTopbar(state.route);
+    if (state.route.name === 'workout' && current) renderTopbar(state.route);
+    else if (!(sessionCtx && sessionCtx.editing)) render();   // never redraw under a workout or a fix in progress
   }
   flushQueue().then(rerenderIfPassive);
 }

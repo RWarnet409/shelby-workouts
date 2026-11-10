@@ -168,6 +168,12 @@ body[data-view="workout"] main { padding-bottom: calc(var(--safe-bottom) + 120px
   color: var(--accent-ink);
   text-decoration: none;
 }
+/* "Start Week n": the same card as a <button> once all four days are done, and a quiet button under the day list otherwise */
+button.next-up { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
+.next-up .eyebrow, .next-up .meta { display: block; }
+.start-week-row { margin: 14px 0 0; }
+.start-week-row p { margin: 0 0 2px; }
+.start-week-row .btn.ghost { margin-top: 0; min-height: var(--tap); color: var(--accent); }
 .next-up .eyebrow { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.85; }
 .next-up .big { display: block; margin: 4px 0; font-size: 24px; font-weight: 700; line-height: 1.2; }
 .next-up .meta { font-size: 15px; opacity: 0.92; }
@@ -560,6 +566,12 @@ body.timer-open { overflow: hidden; }
   font-size: 15px;
 }
 .set-line:first-of-type { border-top: 0; }
+/* "Fix a number" on a session: the same rows as the workout, a hint above and Save / Cancel below */
+.fix-btn { margin-top: 12px; }
+.edit-hint { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+.edit-cardio { padding: 8px 0 4px; }
+.edit-cardio .set-label { display: block; margin-bottom: 4px; }
+.edit-actions { display: grid; gap: 4px; margin-top: 14px; }
 .set-line .tick { color: var(--done); font-weight: 700; min-width: 18px; text-align: right; }
 
 /* ---- settings -------------------------------------------------------- */
